@@ -1,2 +1,84 @@
+# ==============================================================================
+# Security & Credentials (CRITICAL - Public Repository)
+# ==============================================================================
+# GCP Service Account keys & credentials
+*credentials*.json
+*sa*.json
+*gcp-key*.json
+*.service-account.json
 
-/.obsidian/workspace.json
+# SSH keys, certificates, private keys
+*.pem
+*.key
+*.pub
+id_rsa*
+id_ed25519*
+secrets.*
+.env
+.env.*
+!.env.example
+
+# ==============================================================================
+# Terraform & OpenTofu
+# ==============================================================================
+# Local .terraform directories containing downloaded provider plugins
+**/.terraform/*
+
+# .tfstate files contain raw, unencrypted sensitive variables and outputs
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
+
+# Crash logs
+crash.log
+crash.*.log
+
+# Exclude all variable files that contain real values and secrets
+*.tfvars
+*.tfvars.json
+*.auto.tfvars
+*.auto.tfvars.json
+
+# Keep example files tracked
+!*.tfvars.example
+!*.auto.tfvars.example
+
+# Backend configuration files with private bucket names
+*.tfbackend
+backend.hcl
+!*.tfbackend.example
+
+# Override files
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# CLI configuration files
+.terraformrc
+terraform.rc
+
+# ==============================================================================
+# Obsidian Vault
+# ==============================================================================
+# Obsidian workspace layouts and session caches
+.obsidian/workspace.json
+.obsidian/workspace-mobile.json
+.obsidian/cache/
+.obsidian/plugins/*/data.json.bak
+
+# ==============================================================================
+# OS & Editor
+# ==============================================================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
