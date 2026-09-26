@@ -19,6 +19,12 @@ locals {
       type    = "CNAME"
       ttl     = 300
       rrdatas = ["www.sinsamersuk.com."]
+    },
+    {
+      name    = "pve-1.home.sinsamersuk.net."
+      type    = "A"
+      ttl     = 300
+      rrdatas = ["192.168.55.10"]
     }
   ]
 }
