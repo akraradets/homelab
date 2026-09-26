@@ -26,12 +26,14 @@ This repository serves two primary functions:
   - Mounts TrueNAS storage over the virtual Linux bridge (`vmbr0`) at **near-memory speeds (~15–25+ Gbps)** in host RAM.
 - **Remote Access (Zero Inbound Ports)**:
   - **NetBird Cloud** (managed free tier at `app.netbird.io`).
-  - Proxmox host (or a dedicated LXC) functions as a **Routing Peer / Subnet Router** forwarding `192.168.1.0/24`.
+  - Proxmox host (or a dedicated LXC) functions as a **Routing Peer / Subnet Router** forwarding `192.168.55.0/24`.
   - WireGuard P2P direct encryption; zero open ports required on the home router.
 - **Google Cloud Platform (Project `sinsamersuk`)**:
   - **Cloud DNS**: Authoritative public managed zone `sinsamersuk-net` (`sinsamersuk.net.`).
   - **Cloud Storage (GCS)**: Bucket `sinsamersuk-homelab-tfstate` holds remote Terraform state files.
-  - **Service Account**: `terraform-admin@sinsamersuk.iam.gserviceaccount.com` (key at `terraform/gcp/credentials.json`).
+  - **Service Accounts**:
+    - `terraform-admin@sinsamersuk.iam.gserviceaccount.com` (key at `terraform/gcp/credentials.json`) for IaC automation.
+    - `pve-acme@sinsamersuk.iam.gserviceaccount.com` (key at `terraform/gcp/pve-acme-sa.json`) with `roles/dns.admin` for Proxmox ACME DNS-01 challenges.
 
 ---
 
