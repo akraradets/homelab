@@ -128,28 +128,59 @@ Rather than running multiple power-hungry physical servers connected over a slow
 
 ## 5. Automated SSL Certificates (Let's Encrypt via DNS-01 Challenge)
 
-Because the homelab resides entirely behind a firewall with no inbound ports forwarded, conventional HTTP-01 validation (port 80) cannot be used. Instead, Proxmox VE is configured with ACME DNS-01 validation against Google Cloud DNS:
+Because the homelab resides entirely behind a firewall with no inbound ports forwarded, conventional HTTP-01 validation (port 80) cannot be used. Instead, Proxmox VE is configured with ACME DNS-01 validation against Google Cloud DNS.
 
-1. **Service Account**: `pve-acme@sinsamersuk.iam.gserviceaccount.com` has permissions (`roles/dns.admin`) to provision and remove DNS TXT records.
-2. **Credential Deployment**:
-   - The generated key [`pve-acme-sa.json`](../terraform/gcp/pve-acme-sa.json) is copied to the Proxmox host:
-     ```bash
-     scp terraform/gcp/pve-acme-sa.json root@192.168.55.10:/etc/pve/priv/acme/gcp.json
-     ssh root@192.168.55.10 "chmod 600 /etc/pve/priv/acme/gcp.json"
+Proxmox's built-in ACME plugin for `gcloud` invokes `/usr/share/proxmox-acme/dnsapi/dns_gcloud.sh`, which drops privileges to user `nobody` (`setpriv --reuid nobody --regid nogroup`) and calls the `gcloud` CLI.
+
+### Step 1: Install `google-cloud-cli` on Proxmox VE
+On the Proxmox host (`pve-1`), install the official Google Cloud CLI:
+```bash
+# Install apt transport prerequisites
+apt-get update && apt-get install -y apt-transport-https ca-certificates gnupg curl
+
+# Add Google Cloud public key
+curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg
+
+# Add Google Cloud SDK repository
+echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" > /etc/apt/sources.list.d/google-cloud-sdk.list
+
+# Install google-cloud-cli
+apt-get update && apt-get install -y google-cloud-cli
+```
+
+### Step 2: Prepare Directories and Deploy Service Account Key
+Because Proxmox runs the ACME task as unprivileged user `nobody`, the credentials and runtime cache must reside in paths accessible to `nobody`:
+```bash
+# On Proxmox host: Create directory for credentials and gcloud cache
+mkdir -p /etc/acme /var/cache/acme-gcloud
+chown -R nobody:nogroup /etc/acme /var/cache/acme-gcloud
+```
+
+From your local machine, copy the generated service account key:
+```bash
+scp terraform/gcp/pve-acme-sa.json root@192.168.55.10:/etc/acme/gcp.json
+ssh root@192.168.55.10 "chown nobody:nogroup /etc/acme/gcp.json && chmod 600 /etc/acme/gcp.json"
+```
+
+### Step 3: Configure ACME Challenge Plugin in Proxmox Web GUI
+1. Navigate to **Datacenter** -> **ACME** -> **Challenge Plugins** -> click **Add** (or **Edit** existing `gcp-dns`):
+   - **Plugin ID**: `gcp-dns`
+   - **DNS API**: `Google Cloud DNS (gcloud)`
+   - **API Data**:
+     ```text
+     HOME=/var/cache/acme-gcloud
+     PATH=/usr/local/bin:/usr/bin:/bin
+     CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE=/etc/acme/gcp.json
+     CLOUDSDK_CORE_PROJECT=sinsamersuk
      ```
-3. **Proxmox ACME Plugin Configuration**:
-   - In PVE Web GUI -> **Datacenter** -> **ACME** -> **Challenge Plugins** -> **Add**:
-     - **Plugin ID**: `gcp-dns`
-     - **DNS API**: `Google Cloud DNS (gcloud)`
-     - **API Data**:
-       ```text
-       GCLOUD_PROJECT=sinsamersuk
-       GCLOUD_KEY_FILE=/etc/pve/priv/acme/gcp.json
-       ```
-4. **Certificate Issuance**:
-   - In PVE Web GUI -> **pve-1** -> **Certificates** -> **ACME** -> **Add**:
-     - **Domain**: `pve-1.home.sinsamersuk.net`
-     - **Challenge Type**: `DNS`
-     - **Plugin**: `gcp-dns`
-   - Click **Order Certificates Now**. Proxmox creates the `_acme-challenge.pve-1.home.sinsamersuk.net` TXT record in Cloud DNS, Let's Encrypt validates it, and the valid wildcard/SAN certificate is installed automatically with zero browser security warnings.
+2. Click **Apply** / **Add**.
+
+### Step 4: Order Certificate
+1. Navigate to **pve-1** (node) -> **Certificates** -> **ACME**.
+2. Click **Add**:
+   - **Domain**: `pve-1.home.sinsamersuk.net`
+   - **Challenge Type**: `DNS`
+   - **Plugin**: `gcp-dns`
+3. Click **Order Certificates Now**. Proxmox creates the `_acme-challenge` TXT record in Google Cloud DNS, Let's Encrypt completes the challenge, and Proxmox reloads `pveproxy` with a trusted certificate.
+
 
