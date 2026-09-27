@@ -83,5 +83,5 @@ All documentation files reside in [`docs/`](./docs/):
   - `outputs.tf`: Zone and nameserver outputs.
 - **[`terraform/proxmox/`](./terraform/proxmox/)**:
   - Uses `bpg/proxmox` provider.
-  - `truenas-vm.tf`: TrueNAS SCALE VM with PCIe controller passthrough.
-  - `work-vms.tf`: Workstation VM definitions.
+  - `100-truenas.tf`: TrueNAS SCALE VM with PCIe controller passthrough (`order = 1, up_delay = 60`).
+  - `110-work-desktop.tf`: Workstation Desktop VM with standard GNOME and XRDP (`order = 2`).

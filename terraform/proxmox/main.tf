@@ -4,7 +4,7 @@ terraform {
   required_providers {
     proxmox = {
       source  = "bpg/proxmox"
-      version = "~> 0.68.0"
+      version = ">= 0.70.0"
     }
   }
 
@@ -19,8 +19,4 @@ provider "proxmox" {
   endpoint  = "https://pve-1.home.sinsamersuk.net:8006/"
   insecure  = false
   api_token = var.proxmox_api_token
-
-  ssh {
-    agent = true
-  }
 }

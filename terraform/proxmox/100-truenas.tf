@@ -20,7 +20,13 @@ resource "proxmox_virtual_environment_vm" "truenas_vm" {
   started       = true
   on_boot       = true
   tablet_device = false
-  boot_order    = ["scsi0", "ide2", "net0"]
+  boot_order    = ["scsi0", "net0"]
+
+  startup {
+    order      = 1
+    up_delay   = 60
+    down_delay = 60
+  }
 
   agent {
     enabled = true
@@ -67,12 +73,6 @@ resource "proxmox_virtual_environment_vm" "truenas_vm" {
     ssd          = true
   }
 
-  # TrueNAS SCALE Installer ISO
-  cdrom {
-    enabled   = true
-    file_id   = "local:iso/TrueNAS-26.0.0-BETA.3.iso"
-    interface = "ide2"
-  }
 
   # Direct PCIe Passthrough via Proxmox Resource Mapping
   hostpci {
@@ -82,9 +82,17 @@ resource "proxmox_virtual_environment_vm" "truenas_vm" {
     rombar  = true
   }
 
+  # PNY CS3030 2TB NVMe PCIe Passthrough for Fast Storage Pool
+  hostpci {
+    device  = "hostpci1"
+    mapping = proxmox_virtual_environment_hardware_mapping_pci.nvme_fast_storage.name
+    pcie    = true
+    rombar  = true
+  }
+
   lifecycle {
     ignore_changes = [
-      cdrom, # Prevents Terraform from reattaching the installer ISO after initial OS install
+      cdrom,
     ]
   }
 }

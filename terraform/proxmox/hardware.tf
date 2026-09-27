@@ -16,3 +16,18 @@ resource "proxmox_virtual_environment_hardware_mapping_pci" "sata_controller" {
     }
   ]
 }
+
+resource "proxmox_virtual_environment_hardware_mapping_pci" "nvme_fast_storage" {
+  name    = "nvme-fast-storage"
+  comment = "PNY CS3030 2TB NVMe SSD for TrueNAS VM Storage"
+
+  map = [
+    {
+      node         = "pve-1"
+      path         = "0000:03:00.0"
+      id           = "1987:5012"
+      subsystem_id = "1987:5012"
+      iommu_group  = 17
+    }
+  ]
+}

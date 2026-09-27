@@ -35,7 +35,7 @@ output "proxmox_nodes" {
 
 output "proxmox_datastores" {
   description = "Configured datastores on pve-1"
-  value       = data.proxmox_virtual_environment_datastores.datastores.datastore_ids
+  value       = [for ds in data.proxmox_virtual_environment_datastores.datastores.datastores : ds.id]
 }
 
 output "proxmox_existing_vms" {
