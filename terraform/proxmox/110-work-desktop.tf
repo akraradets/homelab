@@ -37,6 +37,7 @@ resource "proxmox_virtual_environment_vm" "work_desktop" {
 
   agent {
     enabled = true
+    timeout = "30s"
   }
 
   cpu {
@@ -77,7 +78,7 @@ resource "proxmox_virtual_environment_vm" "work_desktop" {
     datastore_id = "truenas-fast"
 
     user_account {
-      username = "akraradets"
+      username = "ubuntu"
       password = "ubuntu"
       keys     = ["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIADpR5J4va1V025W48afmFqO8wNo31QxSHkWA0SBg2t7 akraradets@mbp16"]
     }
