@@ -31,3 +31,18 @@ resource "proxmox_virtual_environment_hardware_mapping_pci" "nvme_fast_storage" 
     }
   ]
 }
+
+resource "proxmox_virtual_environment_hardware_mapping_pci" "intel_uhd" {
+  name    = "intel-uhd"
+  comment = "Intel Alder Lake-S GT1 [UHD Graphics 770]"
+
+  map = [
+    {
+      node         = "pve-1"
+      path         = "0000:00:02.0"
+      id           = "8086:4680"
+      subsystem_id = "1043:8882"
+      iommu_group  = 0
+    }
+  ]
+}
