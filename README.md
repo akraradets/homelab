@@ -58,18 +58,71 @@ This repository serves as the single source of truth for my homelab architecture
 
 ## Getting Started
 
-### 1. Homelab Notes (Obsidian)
-Open this repository folder directly in [Obsidian](https://obsidian.md). The notes are cross-linked using Obsidian wikilinks `[[...]]` with full Mermaid diagram support. Start at [`docs/00-index.md`](file:///Users/akraradets/Projects/sinsamersuk/homelab/docs/00-index.md) or [`docs/architecture.md`](file:///Users/akraradets/Projects/sinsamersuk/homelab/docs/architecture.md).
+This repository uses a **Stateless Infrastructure Pattern**. No credentials or `.tfvars` files are tied to your local computer. Your Google Cloud identity is the single root of trust.
 
-### 2. Terraform Infrastructure (Zero Local Secrets)
-All sensitive credentials are centrally secured in **Google Cloud Secret Manager** (`pve-api-token`) and remote state is encrypted in **Google Cloud Storage (GCS)**. No `terraform.tfvars` files are required on disk:
+### Prerequisites
+- [Google Cloud SDK (`gcloud`)](https://cloud.google.com/sdk/docs/install)
+- [Terraform](https://developer.hashicorp.com/terraform/install) (>= 1.5.0)
+- [Obsidian](https://obsidian.md) (for viewing architecture runbooks)
+
+---
+
+### Step 1: Clone & Authenticate with Google Cloud
+From any machine (Mac, Linux, or Cloud Workstation):
 
 ```bash
-# Proxmox module execution
-cd terraform/proxmox
-export TF_VAR_proxmox_api_token=$(gcloud secrets versions access latest --secret=pve-api-token --project=sinsamersuk)
+git clone https://github.com/akraradets/homelab.git
+cd homelab
+
+# Authenticate with Google Cloud (project sinsamersuk)
+gcloud auth login
+gcloud config set project sinsamersuk
+```
+
+---
+
+### Step 2: Generate Local Service Account Key for GCP IaC
+The `terraform-admin` service account key is git-ignored and can be generated on-demand at any time:
+
+```bash
+gcloud iam service-accounts keys create terraform/gcp/credentials.json \
+    --iam-account=terraform-admin@sinsamersuk.iam.gserviceaccount.com \
+    --project=sinsamersuk
+```
+
+---
+
+### Step 3: Manage Cloud Infrastructure (`terraform/gcp`)
+Manages Google Cloud DNS (`sinsamersuk.net.`), Let's Encrypt ACME credentials, and Secret Manager containers with encrypted remote state in GCS:
+
+```bash
+cd terraform/gcp
+terraform init
 terraform plan
 terraform apply
 ```
-See [`terraform/README.md`](file:///Users/akraradets/Projects/sinsamersuk/homelab/terraform/README.md) for complete details.
+
+---
+
+### Step 4: Manage Proxmox & TrueNAS (`terraform/proxmox`)
+The Proxmox API token is retrieved directly into RAM from **Google Cloud Secret Manager**. Zero `.tfvars` files needed on disk:
+
+```bash
+cd terraform/proxmox
+
+# Read token directly into memory from GCP Secret Manager
+export TF_VAR_proxmox_api_token=$(gcloud secrets versions access latest --secret=pve-api-token --project=sinsamersuk)
+
+terraform init
+terraform plan
+terraform apply
+```
+
+---
+
+### 5. Knowledge Base & Runbooks (Obsidian)
+Open this repository folder directly in [Obsidian](https://obsidian.md).
+- Entry navigation hub: [`docs/00-index.md`](./docs/00-index.md)
+- Complete topology & ACME guide: [`docs/architecture.md`](./docs/architecture.md)
+- Terraform security & details: [`terraform/README.md`](./terraform/README.md)
 
