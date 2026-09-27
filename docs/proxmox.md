@@ -99,7 +99,7 @@ sequenceDiagram
 
 * **Boot Rules**:
   * TrueNAS SCALE (`vm_id = 100`): `order = 1`, `up_delay = 60`, `down_delay = 60`.
-  * Dependent VMs (`vm_id = 110`): `order = 2`, `up_delay = 0`.
+  * Dependent Compute VMs (`vm_id = 110` work-desktop / work-dev): `order = 2`, `up_delay = 0`.
 * **Shutdown Rules**:
   * Dependent VMs halt first (`order = 2`).
   * TrueNAS halts last (`order = 1`), guaranteeing zero filesystem corruption on guest virtual disks.

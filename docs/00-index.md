@@ -6,4 +6,4 @@ Welcome to the homelab documentation vault.
 - [[proxmox|Proxmox VE Hypervisor]]: Node specifications, PCIe passthrough resource mappings, shared NFS storage, and VM sequencing.
 - [[truenas|TrueNAS SCALE Storage & SSL]]: Virtual appliance architecture, ZFS pool layout, fast NVMe dataset tuning, NFS/SMB shares, and ACME DNS-01 SSL.
 - [[netbird|NetBird Remote Access & Subnet Routing]]: Zero-inbound-port WireGuard mesh with Proxmox host subnet routing.
-- [[workstation|Ubuntu Desktop Workstation]]: Ubuntu 24.04 desktop environment, persistent multi-user XRDP, VS Code, and TrueNAS mount.
+- [[workstation|Workstation & Dev Environments]]: Compute architecture, identity alignment (UID 3000), TrueNAS NFS storage, and remote access evaluation (VS Code Remote-SSH vs. Moonlight/Sunshine vs. XRDP).

@@ -36,7 +36,11 @@ This repository serves as the single source of truth for my homelab architecture
 │
 ├── docs/                          # Homelab Documentation (Obsidian Markdown)
 │   ├── 00-index.md                # Vault navigation & index
-│   └── architecture.md            # Complete architecture, networking, DNS, and ACME runbook
+│   ├── architecture.md            # Complete architecture, networking, DNS, and ACME runbook
+│   ├── netbird.md                 # NetBird WireGuard mesh & subnet routing runbook
+│   ├── proxmox.md                 # Hypervisor specs, PCIe passthrough, & datastores
+│   ├── truenas.md                 # TrueNAS SCALE ZFS pools, NFS/SMB, & ACME SSL
+│   └── workstation.md             # Workstation compute architecture & protocol evaluation
 │
 └── terraform/                     # Infrastructure-as-Code
     ├── README.md                  # Terraform usage instructions & security guide
@@ -50,7 +54,8 @@ This repository serves as the single source of truth for my homelab architecture
         ├── main.tf                # Provider setup & GCS backend
         ├── nodes.tf               # Cluster discovery (nodes, datastores, specs)
         ├── hardware.tf            # PCI device mappings (SATA controller passthrough)
-        ├── truenas-vm.tf          # TrueNAS SCALE VM definition (32 GB RAM)
+        ├── 100-truenas.tf         # TrueNAS SCALE VM definition (32 GB RAM)
+        ├── 110-work-desktop.tf    # Ubuntu Workstation VM definition
         └── outputs.tf
 ```
 

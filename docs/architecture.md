@@ -120,9 +120,10 @@ Rather than running multiple power-hungry physical servers connected over a slow
 - Compute VMs and TrueNAS connect over the internal Linux bridge (`vmbr0`) using `virtio-net`.
 - Network traffic between Workstation VMs and TrueNAS storage travels entirely within host RAM, achieving **sustained speeds of ~15–25+ Gbps** without requiring physical 10GbE network cards or switches.
 
-### Workstation Desktop VM
-- Features a **SPICE** display driver (`qxl`) with `qemu-vdagent` installed inside the guest.
-- Provides smooth mouse cursor tracking, automatic resolution resizing to match browser/client windows, and seamless clipboard copy/paste.
+### Workstation & Compute Workloads
+- Supports both headless development environments (accessed via **VS Code / Cursor Remote - SSH**) and graphical desktop environments (streamed via **Sunshine / Moonlight** or SPICE).
+- User identity is unified with UID `3000` (`akraradets`), allowing direct read/write access to TrueNAS NFS project datasets over `vmbr0` at near-memory speeds (~15–25+ Gbps).
+- Detailed protocol evaluation and runbooks are documented in [[workstation|Workstation & Dev Environments]].
 
 ---
 

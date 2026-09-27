@@ -21,8 +21,9 @@ This repository serves two primary functions:
   - TrueNAS runs ZFS directly against physical drives for native SMART health and scrub integrity.
   - Serves SMB shares and **Apple Time Machine** (with strict dataset quotas).
 - **Compute Workloads**:
-  - Desktop Workstation VM (SPICE display + `qemu-vdagent` for resolution auto-resizing and clipboard).
-  - Headless Development VMs for containers and background jobs.
+  - Headless Development VMs accessed via **VS Code / Cursor Remote - SSH** (zero display latency, native macOS UI).
+  - Graphical Workstations streamed via **Moonlight + Sunshine** using Intel Quick Sync Video (QSV) hardware encoding.
+  - Standardized identity: **`akraradets` (UID 3000, GID 3000)** strictly aligned with TrueNAS ZFS dataset permissions.
   - Mounts TrueNAS storage over the virtual Linux bridge (`vmbr0`) at **near-memory speeds (~15–25+ Gbps)** in host RAM.
 - **Remote Access (Zero Inbound Ports)**:
   - **NetBird Cloud** (managed free tier at `app.netbird.io`).
@@ -84,4 +85,22 @@ All documentation files reside in [`docs/`](./docs/):
 - **[`terraform/proxmox/`](./terraform/proxmox/)**:
   - Uses `bpg/proxmox` provider.
   - `100-truenas.tf`: TrueNAS SCALE VM with PCIe controller passthrough (`order = 1, up_delay = 60`).
-  - `110-work-desktop.tf`: Workstation Desktop VM with standard GNOME and XRDP (`order = 2`).
+  - `110-work-desktop.tf`: Workstation VM definition and cloud image import (temporarily dormant / commented out).
+  - `hardware.tf`: PCI hardware mappings for SATA controller and NVMe passthrough.
+  - `outputs.tf`: Proxmox cluster metadata and VM outputs.
+
+---
+
+## 6. Operational Learnings & Guardrails (DO NOT REPEAT)
+
+- **Zero Hypervisor SSH / 100% PVEAPIToken Managed**:
+  - Proxmox VE REST API explicitly rejects uploading `content_type = "snippets"` via `/api2/json/.../upload` or `/download-url`.
+  - The `bpg/proxmox` provider resource `proxmox_virtual_environment_file` attempts to fall back to SSH/SFTP into `pve-1:22`.
+  - **Do NOT** use `proxmox_virtual_environment_file` for snippets; always configure Cloud-Init via native `initialization` block in `proxmox_virtual_environment_vm`.
+- **Headless Cloud Image $\rightarrow$ Desktop GUI is an Anti-Pattern**:
+  - Cloud images lack GPU drivers; bolting on desktop environments defaults to `llvmpipe` software rasterization on the CPU (~10–15 FPS).
+  - For development, use **VS Code / Cursor Remote - SSH** to a headless VM.
+  - For full GUI desktops, use official desktop ISOs or pass through Intel UHD 770 iGPU (`/dev/dri`) for hardware-accelerated **Sunshine + Moonlight**.
+- **Linux Kernel Blocks `usermod -u 3000` While Logged In**:
+  - A user cannot change their own UID while their shell or session is active (`usermod: user is currently used by process <PID>`). User accounts with custom UIDs (3000) must be created prior to user login or via bootstrap user.
+

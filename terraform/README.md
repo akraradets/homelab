@@ -55,6 +55,7 @@ terraform plan -var="proxmox_api_token=$(gcloud secrets versions access latest -
 - **[`proxmox/`](./proxmox)**: Proxmox VE hypervisor resources:
   - `main.tf`: Provider setup and GCS backend.
   - `nodes.tf`: Dynamic cluster discovery (nodes, datastores, hardware specs).
-  - `hardware.tf`: PCI hardware resource mappings (`sata-controller` for PCIe passthrough).
-  - `truenas-vm.tf`: TrueNAS SCALE VM with 32 GB RAM and SATA controller passthrough.
+  - `hardware.tf`: PCI hardware resource mappings (`sata-controller` and `nvme-fast-storage` for PCIe passthrough).
+  - `100-truenas.tf`: TrueNAS SCALE VM with 32 GB dedicated RAM and SATA controller passthrough.
+  - `110-work-desktop.tf`: Ubuntu Workstation VM definition and cloud image import.
   - `outputs.tf`: VM IDs and resource metadata.
