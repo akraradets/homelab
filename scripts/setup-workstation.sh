@@ -180,7 +180,7 @@ systemctl enable xrdp xrdp-sesman
 # ------------------------------------------------------------------------------
 # 6. Install Official Microsoft VS Code
 # ------------------------------------------------------------------------------
-echo "==> [6/6] Installing Microsoft Visual Studio Code..."
+echo "==> [6/7] Installing Microsoft Visual Studio Code..."
 curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor -o /etc/apt/keyrings/packages.microsoft.gpg
 chmod a+r /etc/apt/keyrings/packages.microsoft.gpg
 
@@ -189,6 +189,12 @@ echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/packages.microsoft.gpg] https:
 
 apt-get update -y
 apt-get install -y code
+
+# ------------------------------------------------------------------------------
+# 7. Install NetBird Client (Zero-Tier Remote Mesh)
+# ------------------------------------------------------------------------------
+echo "==> [7/7] Installing NetBird Client..."
+curl -fsSL https://pkgs.netbird.io/install.sh | sh
 
 echo "=========================================================="
 echo " Workstation Setup Successfully Completed!"
