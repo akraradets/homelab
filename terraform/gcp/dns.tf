@@ -25,6 +25,12 @@ locals {
       type    = "A"
       ttl     = 300
       rrdatas = ["192.168.55.10"]
+    },
+    {
+      name    = "truenas.home.sinsamersuk.net."
+      type    = "A"
+      ttl     = 300
+      rrdatas = ["192.168.55.100"]
     }
   ]
 }
