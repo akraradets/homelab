@@ -1,12 +1,13 @@
 variable "proxmox_endpoint" {
   type        = string
-  description = "The Proxmox VE API endpoint URL (e.g. https://192.168.1.10:8006/)."
+  description = "The Proxmox VE API endpoint URL."
+  default     = "https://pve-1.home.sinsamersuk.net:8006/"
 }
 
 variable "proxmox_insecure" {
   type        = bool
   description = "Whether to skip TLS certificate verification."
-  default     = true
+  default     = false
 }
 
 variable "proxmox_api_token" {
@@ -31,8 +32,8 @@ variable "proxmox_password" {
 
 variable "pve_node_name" {
   type        = string
-  description = "The target Proxmox VE node name (e.g. pve-1 or pve)."
-  default     = "pve"
+  description = "The target Proxmox VE node name."
+  default     = "pve-1"
 }
 
 variable "network_bridge" {
@@ -59,7 +60,7 @@ variable "truenas_vm_id" {
 variable "truenas_memory_mb" {
   type        = number
   description = "Dedicated RAM in MB for TrueNAS SCALE (fixed, no ballooning)."
-  default     = 16384
+  default     = 32768
 }
 
 variable "truenas_cores" {
@@ -70,13 +71,14 @@ variable "truenas_cores" {
 
 variable "truenas_iso_file_id" {
   type        = string
-  description = "File ID of the TrueNAS installer ISO in Proxmox (e.g. local:iso/TrueNAS-SCALE-24.10.0.iso)."
-  default     = "local:iso/TrueNAS-SCALE-24.10.0.iso"
+  description = "File ID of the TrueNAS installer ISO in Proxmox."
+  default     = "local:iso/TrueNAS-26.0.0-BETA.3.iso"
 }
 
 variable "sata_controller_pci_id" {
   type        = string
-  description = "The PCI ID of the SATA or SAS HBA controller to pass through to TrueNAS (e.g. 0000:00:17.0)."
+  description = "The PCI ID of the SATA or SAS HBA controller to pass through to TrueNAS."
+  default     = "0000:00:17.0"
 }
 
 # ------------------------------------------------------------------------------

@@ -2,18 +2,18 @@
 # cp terraform.tfvars.example terraform.tfvars
 
 # Proxmox VE API Connection
-proxmox_endpoint = "https://192.168.1.10:8006/"
-proxmox_insecure = true
+proxmox_endpoint = "https://pve-1.home.sinsamersuk.net:8006/"
+proxmox_insecure = false
 
 # Option A: API Token (Recommended)
 # Create in Proxmox Web GUI -> Datacenter -> Permissions -> API Tokens
-proxmox_api_token = "terraform@pve!token=00000000-0000-0000-0000-000000000000"
+proxmox_api_token = "root@pam!terraform=00000000-0000-0000-0000-000000000000"
 
 # Option B: Standard Root Credentials (uncomment if not using API token)
 # proxmox_username = "root@pam"
 # proxmox_password = "your-pve-password"
 
-pve_node_name  = "pve"
+pve_node_name  = "pve-1"
 network_bridge = "vmbr0"
 datastore_id   = "local-lvm"
 

@@ -5,7 +5,7 @@ resource "proxmox_virtual_environment_vm" "truenas_vm" {
   node_name   = var.pve_node_name
   vm_id       = var.truenas_vm_id
   name        = "truenas-scale"
-  description = "Managed by Terraform - TrueNAS SCALE with PCIe SATA Passthrough"
+  description = "TrueNAS SCALE with Intel Raptor Lake SATA Controller Passthrough (0000:00:17.0)"
   tags        = ["nas", "storage", "truenas", "terraform"]
 
   # Essential architecture for PCIe Passthrough & TrueNAS
@@ -13,9 +13,14 @@ resource "proxmox_virtual_environment_vm" "truenas_vm" {
   bios          = "ovmf"
   scsi_hardware = "virtio-scsi-single"
 
+  operating_system {
+    type = "l26"
+  }
+
   started       = true
   on_boot       = true
   tablet_device = false
+  boot_order    = ["scsi0", "ide2", "net0"]
 
   agent {
     enabled = true
@@ -32,8 +37,10 @@ resource "proxmox_virtual_environment_vm" "truenas_vm" {
   }
 
   network_device {
-    bridge = var.network_bridge
-    model  = "virtio"
+    bridge   = var.network_bridge
+    model    = "virtio"
+    queues   = var.truenas_cores # Multiqueue: distributes packet queues across all vCPUs for 25-40+ Gbps
+    firewall = false            # Bypasses netfilter overhead for raw host RAM throughput
   }
 
   # EFI State Storage
@@ -43,7 +50,7 @@ resource "proxmox_virtual_environment_vm" "truenas_vm" {
     type         = "4m"
   }
 
-  # Virtual Boot Drive on fast local storage (NVMe/SSD)
+  # Virtual Boot Drive on fast local-lvm storage (NVMe)
   disk {
     datastore_id = var.datastore_id
     interface    = "scsi0"
@@ -61,7 +68,7 @@ resource "proxmox_virtual_environment_vm" "truenas_vm" {
     interface = "ide2"
   }
 
-  # Direct PCIe Passthrough of Motherboard SATA Controller or SAS HBA
+  # Direct PCIe Passthrough of Motherboard SATA Controller (0000:00:17.0)
   hostpci {
     device = "hostpci0"
     id     = var.sata_controller_pci_id
