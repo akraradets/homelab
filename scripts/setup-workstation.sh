@@ -169,11 +169,13 @@ cat << 'EOF' > "/home/${TARGET_USER}/.xsessionrc"
 export GNOME_SHELL_SESSION_MODE=ubuntu
 export XDG_CURRENT_DESKTOP=ubuntu:GNOME
 export XDG_CONFIG_DIRS=/etc/xdg/xdg-ubuntu:/etc/xdg
-exec /usr/bin/gnome-session --session=ubuntu
 EOF
 chown "${TARGET_UID}:${TARGET_GID}" "/home/${TARGET_USER}/.xsessionrc"
 
-systemctl enable --now xrdp
+# Restart XRDP services so the daemon picks up the ssl-cert group membership
+systemctl daemon-reload
+systemctl restart xrdp xrdp-sesman
+systemctl enable xrdp xrdp-sesman
 
 # ------------------------------------------------------------------------------
 # 6. Install Official Microsoft VS Code
