@@ -1,37 +1,6 @@
-# Copy this file to terraform.tfvars and fill in your actual values:
-# cp terraform.tfvars.example terraform.tfvars
+# ==============================================================================
+# Proxmox VE Terraform Variables Example
+# Run `./scripts/bootstrap.sh` to generate the real terraform.tfvars automatically!
+# ==============================================================================
 
-# Proxmox VE API Connection
-proxmox_endpoint = "https://pve-1.home.sinsamersuk.net:8006/"
-proxmox_insecure = false
-
-# Option A: API Token (Recommended)
-# Create in Proxmox Web GUI -> Datacenter -> Permissions -> API Tokens
 proxmox_api_token = "root@pam!terraform=00000000-0000-0000-0000-000000000000"
-
-# Option B: Standard Root Credentials (uncomment if not using API token)
-# proxmox_username = "root@pam"
-# proxmox_password = "your-pve-password"
-
-pve_node_name  = "pve-1"
-network_bridge = "vmbr0"
-datastore_id   = "local-lvm"
-
-# ------------------------------------------------------------------------------
-# TrueNAS SCALE Configuration
-# ------------------------------------------------------------------------------
-truenas_vm_id       = 100
-truenas_memory_mb   = 16384 # 16 GB dedicated RAM (no ballooning)
-truenas_cores       = 4
-truenas_iso_file_id = "local:iso/TrueNAS-SCALE-24.10.0.iso"
-
-# SATA / SAS HBA PCIe Passthrough ID
-# Locate using: lspci -nnk | grep -i -E "sata|ahci|raid"
-sata_controller_pci_id = "0000:00:17.0"
-
-# ------------------------------------------------------------------------------
-# Workstation VM Configuration
-# ------------------------------------------------------------------------------
-work_desktop_vm_id     = 110
-work_desktop_memory_mb = 8192
-work_desktop_cores     = 4

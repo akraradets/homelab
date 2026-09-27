@@ -16,13 +16,9 @@ terraform {
 }
 
 provider "proxmox" {
-  endpoint = var.proxmox_endpoint
-  insecure = var.proxmox_insecure
-
-  # Supports either API Token (recommended) or Username & Password
+  endpoint  = "https://pve-1.home.sinsamersuk.net:8006/"
+  insecure  = false
   api_token = var.proxmox_api_token
-  username  = var.proxmox_username
-  password  = var.proxmox_password
 
   ssh {
     agent = true

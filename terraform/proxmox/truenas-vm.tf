@@ -2,8 +2,8 @@
 # TrueNAS SCALE Virtual Machine with PCIe SATA Controller Passthrough
 # ==============================================================================
 resource "proxmox_virtual_environment_vm" "truenas_vm" {
-  node_name   = var.pve_node_name
-  vm_id       = var.truenas_vm_id
+  node_name   = "pve-1"
+  vm_id       = 100
   name        = "truenas-scale"
   description = "TrueNAS SCALE with Intel Raptor Lake SATA Controller Passthrough (0000:00:17.0)"
   tags        = ["nas", "storage", "truenas", "terraform"]
@@ -22,37 +22,44 @@ resource "proxmox_virtual_environment_vm" "truenas_vm" {
   tablet_device = false
   boot_order    = ["scsi0", "ide2", "net0"]
 
+  # Agent is disabled during initial install from ISO so Terraform doesn't hang waiting for guest agent
   agent {
-    enabled = true
+    enabled = false
+  }
+
+  # VirtIO-GPU with 32MB VRAM fixes garbled/unreadable console text under OVMF (UEFI)
+  vga {
+    type   = "virtio"
+    memory = 32
   }
 
   cpu {
-    cores = var.truenas_cores
+    cores = 4
     type  = "host"
   }
 
   memory {
-    # Fixed allocation: Ballooning must NOT be used with ZFS and PCIe passthrough
-    dedicated = var.truenas_memory_mb
+    # 32 GB Dedicated fixed RAM (Ballooning must NOT be used with ZFS and PCIe passthrough)
+    dedicated = 32768
   }
 
   network_device {
-    bridge   = var.network_bridge
+    bridge   = "vmbr0"
     model    = "virtio"
-    queues   = var.truenas_cores # Multiqueue: distributes packet queues across all vCPUs for 25-40+ Gbps
-    firewall = false            # Bypasses netfilter overhead for raw host RAM throughput
+    queues   = 4     # Multiqueue: distributes packet queues across all vCPUs for 25-40+ Gbps
+    firewall = false # Bypasses netfilter overhead for raw host RAM throughput
   }
 
   # EFI State Storage
   efi_disk {
-    datastore_id = var.datastore_id
+    datastore_id = "local-lvm"
     file_format  = "raw"
     type         = "4m"
   }
 
   # Virtual Boot Drive on fast local-lvm storage (NVMe)
   disk {
-    datastore_id = var.datastore_id
+    datastore_id = "local-lvm"
     interface    = "scsi0"
     size         = 32
     file_format  = "raw"
@@ -64,16 +71,16 @@ resource "proxmox_virtual_environment_vm" "truenas_vm" {
   # TrueNAS SCALE Installer ISO
   cdrom {
     enabled   = true
-    file_id   = var.truenas_iso_file_id
+    file_id   = "local:iso/TrueNAS-26.0.0-BETA.3.iso"
     interface = "ide2"
   }
 
-  # Direct PCIe Passthrough of Motherboard SATA Controller (0000:00:17.0)
+  # Direct PCIe Passthrough via Proxmox Resource Mapping
   hostpci {
-    device = "hostpci0"
-    id     = var.sata_controller_pci_id
-    pcie   = true
-    rombar = true
+    device  = "hostpci0"
+    mapping = proxmox_virtual_environment_hardware_mapping_pci.sata_controller.name
+    pcie    = true
+    rombar  = true
   }
 
   lifecycle {

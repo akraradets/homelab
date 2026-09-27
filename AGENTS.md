@@ -35,11 +35,12 @@ This repository serves two primary functions:
   - **Service Accounts**:
     - `terraform-admin@sinsamersuk.iam.gserviceaccount.com` (key at `terraform/gcp/credentials.json`) for IaC automation.
     - `pve-acme@sinsamersuk.iam.gserviceaccount.com` (key at `terraform/gcp/pve-acme-sa.json`) with `roles/dns.admin` for Proxmox ACME DNS-01 challenges.
-- **Terraform Execution Pattern**:
-  - `terraform/gcp`: Executed using local isolated `credentials.json`.
-  - `terraform/proxmox`: Pass API token dynamically in memory via:
-    `-var="proxmox_api_token=$(gcloud secrets versions access latest --secret=pve-api-token --project=sinsamersuk)"`.
-    NEVER create or require local `terraform.tfvars` files!
+- **Terraform Execution & Credential Pattern**:
+  - Run `./scripts/bootstrap.sh` to populate git-ignored local credential files from GCP:
+    - `terraform/gcp/credentials.json` (Service account key)
+    - `terraform/proxmox/terraform.tfvars` (Proxmox API token from Secret Manager)
+  - Run standard `terraform plan` and `terraform apply` in each directory with zero inline secret flags.
+  - NEVER commit `terraform.tfvars` or `credentials.json` (strictly git-ignored).
 
 ---
 
@@ -55,6 +56,12 @@ This repository is **publicly accessible**. The agent must strictly follow these
    - Use RFC-compliant dummy values (`example.com`, `192.168.1.0/24`, `203.0.113.1`) for documentation and examples.
 3. **Multi-Account Credential Isolation**:
    - Always configure the Google provider with local `credentials.json` so Terraform operations never collide with global `gcloud` user accounts.
+4. **GCP Secret Manager Free Tier Budget Guardrail (Max 6 Active Versions)**:
+   - Secret Manager provides **up to 6 active secret versions 100% free** per month.
+   - The total active secret versions in project `sinsamersuk` must **never exceed 6**.
+   - Current Inventory:
+     - `pve-api-token` (Proxmox VE API Token) — 1 active version.
+   - When rotating secret values, **always destroy deprecated versions** via `gcloud secrets versions destroy <OLD_VERSION> --secret=<SECRET>` so inactive versions do not consume the 6-version free tier quota.
 
 ---
 

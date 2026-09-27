@@ -1,0 +1,18 @@
+# ==============================================================================
+# Proxmox VE Hardware Resource Mapping (PCI Passthrough)
+# ==============================================================================
+
+resource "proxmox_virtual_environment_hardware_mapping_pci" "sata_controller" {
+  name    = "sata-controller"
+  comment = "Intel Raptor Lake SATA AHCI Controller for TrueNAS"
+
+  map = [
+    {
+      node         = "pve-1"
+      path         = "0000:00:17.0"
+      id           = "8086:7a62"
+      subsystem_id = "1043:8882"
+      iommu_group  = 9
+    }
+  ]
+}

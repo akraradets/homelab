@@ -81,13 +81,11 @@ gcloud config set project sinsamersuk
 
 ---
 
-### Step 2: Generate Local Service Account Key for GCP IaC
-The `terraform-admin` service account key is git-ignored and can be generated on-demand at any time:
+### Step 2: Bootstrap Local Credentials
+Run the bootstrap script once. It automatically creates the git-ignored GCP Service Account key and fetches the Proxmox API token from **GCP Secret Manager** into a local `terraform.tfvars`:
 
 ```bash
-gcloud iam service-accounts keys create terraform/gcp/credentials.json \
-    --iam-account=terraform-admin@sinsamersuk.iam.gserviceaccount.com \
-    --project=sinsamersuk
+./scripts/bootstrap.sh
 ```
 
 ---
@@ -105,18 +103,18 @@ terraform apply
 ---
 
 ### Step 4: Manage Proxmox & TrueNAS (`terraform/proxmox`)
-The Proxmox API token is retrieved directly into RAM from **Google Cloud Secret Manager**. Zero `.tfvars` files needed on disk:
+With `terraform.tfvars` automatically populated by the bootstrap script, run standard Terraform commands with zero manual secrets or inline flags:
 
 ```bash
 cd terraform/proxmox
-
-# Read token directly into memory from GCP Secret Manager
-export TF_VAR_proxmox_api_token=$(gcloud secrets versions access latest --secret=pve-api-token --project=sinsamersuk)
-
 terraform init
 terraform plan
 terraform apply
 ```
+
+> [!NOTE]
+> **GCP Secret Manager Free Tier Policy (Max 6 Active Versions)**:
+> Google Cloud provides **up to 6 active secret versions** and **10,000 access operations/month** 100% free. This repository strictly caps active secrets to $\le 6$ (current inventory: `pve-api-token`, 1 active version). When rotating secrets, always destroy deprecated versions (`gcloud secrets versions destroy <OLD_VERSION> --secret=<NAME>`) to remain permanently within the Free Tier.
 
 ---
 

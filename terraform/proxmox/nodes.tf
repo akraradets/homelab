@@ -10,17 +10,17 @@ data "proxmox_virtual_environment_version" "pve_version" {}
 
 # Discover datastores on target node
 data "proxmox_virtual_environment_datastores" "datastores" {
-  node_name = var.pve_node_name
+  node_name = "pve-1"
 }
 
 # Discover existing VMs on target node
 data "proxmox_virtual_environment_vms" "existing_vms" {
-  node_name = var.pve_node_name
+  node_name = "pve-1"
 }
 
 # Discover node hardware specs
 data "proxmox_virtual_environment_node" "pve_node" {
-  node_name = var.pve_node_name
+  node_name = "pve-1"
 }
 
 output "proxmox_version" {
@@ -54,5 +54,14 @@ output "proxmox_hardware" {
     memory_total_gb  = floor(data.proxmox_virtual_environment_node.pve_node.memory_total / 1073741824)
     memory_avail_gb  = floor(data.proxmox_virtual_environment_node.pve_node.memory_available / 1073741824)
   }
+}
+
+data "proxmox_virtual_environment_hardware_mappings" "pci_mappings" {
+  type = "pci"
+}
+
+output "proxmox_pci_mappings" {
+  description = "Existing PCI hardware mappings in Proxmox"
+  value       = data.proxmox_virtual_environment_hardware_mappings.pci_mappings.ids
 }
 
