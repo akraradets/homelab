@@ -1,23 +1,60 @@
 # Homelab Terraform Infrastructure
 
-This directory contains the Terraform Infrastructure-as-Code (IaC) declarations for the homelab.
+This directory contains declarative Infrastructure-as-Code (IaC) declarations for Google Cloud Platform and Proxmox VE.
 
 ---
 
-## 🔒 Security Guidelines (Public Repository)
+## 🔒 Cloud-Native Secret Management (Zero Local `.tfvars`)
 
-1. **Credentials**: Never commit `.tfvars`, `*.tfstate`, `.env`, or Service Account `.json` keys.
-2. **Template Files**: Only commit `terraform.tfvars.example`.
-3. **Local Setup**:
-   ```bash
-   cp terraform.tfvars.example terraform.tfvars
-   # Edit terraform.tfvars with your actual values (this file is ignored by git)
-   ```
-4. **Remote State**: Use Google Cloud Storage (GCS) to store `.tfstate` files remotely and securely.
+This repository is publicly accessible. Rather than storing sensitive credentials in local `terraform.tfvars` files on disk, all sensitive tokens are stored encrypted in **Google Cloud Secret Manager** and injected into memory at run-time:
+
+- **GCP Secrets**:
+  - `pve-api-token`: Proxmox VE API Token (`root@pam!terraform=UUID`), managed via [`gcp/secret-manager.tf`](./gcp/secret-manager.tf).
+- **GCS Remote State**:
+  - Encrypted backend bucket: `gs://sinsamersuk-homelab-tfstate/`
+  - Separate state prefixes: `terraform/state/gcp` and `terraform/state/proxmox`.
+
+---
+
+## Execution Runbook
+
+### 1. Managing GCP Resources (`terraform/gcp`)
+The Google provider uses the isolated Service Account key at `terraform/gcp/credentials.json` (git-ignored):
+```bash
+cd terraform/gcp
+terraform init
+terraform plan
+terraform apply
+```
+
+### 2. Managing Proxmox Resources (`terraform/proxmox`)
+The Proxmox provider reads `proxmox_api_token` dynamically from Google Cloud Secret Manager:
+
+#### Running in Terminal:
+```bash
+cd terraform/proxmox
+
+# Fetch token into environment variable in RAM
+export TF_VAR_proxmox_api_token=$(gcloud secrets versions access latest --secret=pve-api-token --project=sinsamersuk)
+
+terraform plan
+terraform apply
+```
+
+#### Or as a single inline command:
+```bash
+cd terraform/proxmox
+terraform plan -var="proxmox_api_token=$(gcloud secrets versions access latest --secret=pve-api-token --project=sinsamersuk)"
+```
 
 ---
 
 ## Module Layout
 
-- **[`gcp/`](file:///Users/akraradets/Projects/sinsamersuk/homelab/terraform/gcp)**: Google Cloud DNS managed zone and DNS record sets.
-- **[`proxmox/`](file:///Users/akraradets/Projects/sinsamersuk/homelab/terraform/proxmox)**: Proxmox VE hypervisor resources, including virtualized TrueNAS SCALE with PCIe controller passthrough and Workstation VMs.
+- **[`gcp/`](./gcp)**: Google Cloud DNS zone (`sinsamersuk.net.`), ACME service accounts, and Secret Manager containers.
+- **[`proxmox/`](./proxmox)**: Proxmox VE hypervisor resources:
+  - `main.tf`: Provider setup and GCS backend.
+  - `nodes.tf`: Dynamic cluster discovery (nodes, datastores, hardware specs).
+  - `hardware.tf`: PCI hardware resource mappings (`sata-controller` for PCIe passthrough).
+  - `truenas-vm.tf`: TrueNAS SCALE VM with 32 GB RAM and SATA controller passthrough.
+  - `outputs.tf`: VM IDs and resource metadata.

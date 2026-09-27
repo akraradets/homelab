@@ -31,9 +31,15 @@ This repository serves two primary functions:
 - **Google Cloud Platform (Project `sinsamersuk`)**:
   - **Cloud DNS**: Authoritative public managed zone `sinsamersuk-net` (`sinsamersuk.net.`).
   - **Cloud Storage (GCS)**: Bucket `sinsamersuk-homelab-tfstate` holds remote Terraform state files.
+  - **Secret Manager**: Secret `pve-api-token` holds the Proxmox API token (`root@pam!terraform=UUID`).
   - **Service Accounts**:
     - `terraform-admin@sinsamersuk.iam.gserviceaccount.com` (key at `terraform/gcp/credentials.json`) for IaC automation.
     - `pve-acme@sinsamersuk.iam.gserviceaccount.com` (key at `terraform/gcp/pve-acme-sa.json`) with `roles/dns.admin` for Proxmox ACME DNS-01 challenges.
+- **Terraform Execution Pattern**:
+  - `terraform/gcp`: Executed using local isolated `credentials.json`.
+  - `terraform/proxmox`: Pass API token dynamically in memory via:
+    `-var="proxmox_api_token=$(gcloud secrets versions access latest --secret=pve-api-token --project=sinsamersuk)"`.
+    NEVER create or require local `terraform.tfvars` files!
 
 ---
 

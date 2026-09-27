@@ -44,15 +44,14 @@ This repository serves as the single source of truth for my homelab architecture
     │   ├── main.tf
     │   ├── dns.tf
     │   ├── iam.tf
+    │   ├── secret-manager.tf
     │   └── outputs.tf
     └── proxmox/                   # Proxmox VE hypervisor resources
-        ├── main.tf
-        ├── truenas-vm.tf          # TrueNAS SCALE VM with PCIe SATA passthrough
-        ├── work-vms.tf            # Workstation VM definitions
-        ├── variables.tf
-        ├── outputs.tf
-        ├── versions.tf
-        └── terraform.tfvars.example
+        ├── main.tf                # Provider setup & GCS backend
+        ├── nodes.tf               # Cluster discovery (nodes, datastores, specs)
+        ├── hardware.tf            # PCI device mappings (SATA controller passthrough)
+        ├── truenas-vm.tf          # TrueNAS SCALE VM definition (32 GB RAM)
+        └── outputs.tf
 ```
 
 ---
@@ -62,6 +61,15 @@ This repository serves as the single source of truth for my homelab architecture
 ### 1. Homelab Notes (Obsidian)
 Open this repository folder directly in [Obsidian](https://obsidian.md). The notes are cross-linked using Obsidian wikilinks `[[...]]` with full Mermaid diagram support. Start at [`docs/00-index.md`](file:///Users/akraradets/Projects/sinsamersuk/homelab/docs/00-index.md) or [`docs/architecture.md`](file:///Users/akraradets/Projects/sinsamersuk/homelab/docs/architecture.md).
 
-### 2. Terraform Infrastructure
-See [`terraform/README.md`](file:///Users/akraradets/Projects/sinsamersuk/homelab/terraform/README.md) and [`docs/architecture.md`](file:///Users/akraradets/Projects/sinsamersuk/homelab/docs/architecture.md) for step-by-step instructions on setting up local untracked credentials and running `terraform plan` / `terraform apply`.
+### 2. Terraform Infrastructure (Zero Local Secrets)
+All sensitive credentials are centrally secured in **Google Cloud Secret Manager** (`pve-api-token`) and remote state is encrypted in **Google Cloud Storage (GCS)**. No `terraform.tfvars` files are required on disk:
+
+```bash
+# Proxmox module execution
+cd terraform/proxmox
+export TF_VAR_proxmox_api_token=$(gcloud secrets versions access latest --secret=pve-api-token --project=sinsamersuk)
+terraform plan
+terraform apply
+```
+See [`terraform/README.md`](file:///Users/akraradets/Projects/sinsamersuk/homelab/terraform/README.md) for complete details.
 
