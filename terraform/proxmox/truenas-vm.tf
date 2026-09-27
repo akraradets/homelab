@@ -22,9 +22,8 @@ resource "proxmox_virtual_environment_vm" "truenas_vm" {
   tablet_device = false
   boot_order    = ["scsi0", "ide2", "net0"]
 
-  # Agent is disabled during initial install from ISO so Terraform doesn't hang waiting for guest agent
   agent {
-    enabled = false
+    enabled = true
   }
 
   # VirtIO-GPU with 32MB VRAM fixes garbled/unreadable console text under OVMF (UEFI)
