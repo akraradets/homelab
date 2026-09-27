@@ -68,7 +68,8 @@ resource "proxmox_virtual_environment_vm" "work_desktop" {
 
   # Ubuntu Desktop ISO (CD-ROM)
   cdrom {
-    file_id   = "truenas-proxmox:iso/ubuntu-26.04.01-desktop-amd64.iso"
+    enabled   = true
+    file_id   = "truenas-proxmox:iso/ubuntu-26.04.1-desktop-amd64.iso"
     interface = "ide3"
   }
 
