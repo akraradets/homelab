@@ -28,17 +28,23 @@ export DEBIAN_FRONTEND=noninteractive
 # ------------------------------------------------------------------------------
 # 1. Align User Identity (UID 3000, GID 3000) & SSH Permissions
 # ------------------------------------------------------------------------------
-echo "==> [1/6] Aligning user ${TARGET_USER} identity to UID ${TARGET_UID}, GID ${TARGET_GID}..."
+echo "==> [1/7] Ensuring user ${TARGET_USER} exists with UID ${TARGET_UID}, GID ${TARGET_GID}..."
 
-# Update GID
+# Ensure target group exists
 if getent group "${TARGET_USER}" >/dev/null; then
     groupmod -g "${TARGET_GID}" "${TARGET_USER}" || true
 else
     groupadd -g "${TARGET_GID}" "${TARGET_USER}"
 fi
 
-# Update UID
-usermod -u "${TARGET_UID}" -g "${TARGET_GID}" "${TARGET_USER}" || true
+# Create user or update existing UID
+if id "${TARGET_USER}" >/dev/null 2>&1; then
+    usermod -u "${TARGET_UID}" -g "${TARGET_GID}" "${TARGET_USER}" || true
+else
+    echo "Creating user ${TARGET_USER} with UID ${TARGET_UID}, GID ${TARGET_GID}..."
+    useradd -u "${TARGET_UID}" -g "${TARGET_GID}" -m -s /bin/bash -c "Akraradet Sinsamersuk" "${TARGET_USER}"
+    echo "${TARGET_USER}:ubuntu" | chpasswd
+fi
 
 # Add to sudo group
 usermod -aG sudo "${TARGET_USER}"
@@ -47,8 +53,13 @@ usermod -aG sudo "${TARGET_USER}"
 echo "${TARGET_USER} ALL=(ALL) NOPASSWD:ALL" > "/etc/sudoers.d/99-${TARGET_USER}-nopasswd"
 chmod 440 "/etc/sudoers.d/99-${TARGET_USER}-nopasswd"
 
-# Fix home directory and SSH permissions (fixes OpenSSH StrictModes rejection)
+# Setup SSH keys (copy from bootstrap user if available)
 mkdir -p "/home/${TARGET_USER}/.ssh"
+if [[ -f "/home/ubuntu/.ssh/authorized_keys" ]] && [[ ! -f "/home/${TARGET_USER}/.ssh/authorized_keys" ]]; then
+    cp "/home/ubuntu/.ssh/authorized_keys" "/home/${TARGET_USER}/.ssh/authorized_keys"
+fi
+
+# Fix home directory and SSH permissions (fixes OpenSSH StrictModes rejection)
 chmod 750 "/home/${TARGET_USER}"
 chmod 700 "/home/${TARGET_USER}/.ssh"
 if [[ -f "/home/${TARGET_USER}/.ssh/authorized_keys" ]]; then
