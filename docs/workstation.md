@@ -94,35 +94,32 @@ To prevent permission mismatch between the Linux workstation and TrueNAS ZFS sto
 * **UID**: `3000`
 * **GID**: `3000`
 
-### TrueNAS NFS Mount Configuration
+### TrueNAS NFS Mount Configuration (1:1 Path Parity)
 
-The projects dataset on TrueNAS is exported to `192.168.55.0/24` and mounted directly into the workstation user's home directory.
+To ensure zero cognitive friction across all systems, TrueNAS paths are mounted with exact 1:1 path parity on all client nodes:
 
-#### 1. Manual Verification Mount
-```bash
-sudo mkdir -p /home/akraradets/projects
-sudo mount -t nfs -o vers=4,proto=tcp 192.168.55.100:/mnt/pool-1/projects/akraradets /home/akraradets/projects
-```
-
-#### 2. Persistent Configuration (`/etc/fstab`)
+#### 1. Persistent Configuration (`/etc/fstab`)
 ```ini
-# TrueNAS High-Speed Virtual Bridge NFS Export
-192.168.55.100:/mnt/pool-1/projects/akraradets  /home/akraradets/projects  nfs  defaults,_netdev,x-systemd.automount,nfsvers=4  0  0
+# TrueNAS High-Speed Virtual Bridge NFS Export (1:1 Path Parity)
+192.168.55.100:/mnt/pool-1/home  /mnt/pool-1/home  nfs  defaults,_netdev,bg,intr,noatime,nfsvers=4  0  0
 ```
 
-Because traffic travels over the virtual bridge (`vmbr0`) entirely in RAM, file reads and writes execute with near-NVMe throughput (~15–25+ Gbps).
+#### 2. Local User Symlinks
+To keep local `$HOME` on fast NVMe storage while centralizing credentials and code:
+- `~/.ssh` $\rightarrow$ `/mnt/pool-1/home/akraradets/.ssh` (Centralized key pairs, config, authorized_keys)
+- `~/projects` $\rightarrow$ `/mnt/pool-1/home/akraradets/projects` (Personal git repos & docker assets)
+
+Because traffic travels over the virtual bridge (`vmbr0`) entirely in host RAM, reads and writes execute with near-memory throughput (~15–25+ Gbps).
 
 ---
 
 ## 4. Automated Workstation Provisioning
 
-The repository includes an idempotent setup script at [`scripts/setup-workstation.sh`](file:///Users/akraradets/Projects/sinsamersuk/homelab/scripts/setup-workstation.sh). It automates post-installation configuration:
+The repository includes an idempotent setup script at [`scripts/setup-workstation.sh`](file:///Users/akraradets/Projects/sinsamersuk/homelab/scripts/setup-workstation.sh). It automates the essentials:
 
-1. **User Identity**: Ensures `akraradets` exists with UID `3000`, GID `3000`, passwordless sudo, and installs the authorized SSH public key.
-2. **TrueNAS NFS Storage**: Creates `/home/akraradets/projects` and registers the `/etc/fstab` automount.
-3. **Docker Engine**: Installs official Docker CE, Compose, and appends `akraradets` to the `docker` group.
-4. **Development Tooling**: Installs Git, Curl, Wget, Build-Essential, and VS Code.
-5. **NetBird Client**: Installs official `netbird` package for direct mesh connectivity.
+1. **OpenSSH Server & QEMU Guest Agent**: Installs and activates `openssh-server` and `qemu-guest-agent`.
+2. **TrueNAS Storage**: Mounts `/mnt/pool-1/home` with 1:1 path parity in `/etc/fstab`.
+3. **Docker Engine**: Installs official Docker CE, Compose plugin, and grants the calling user Docker permissions.
 
 To run on a freshly deployed VM:
 ```bash

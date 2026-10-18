@@ -26,11 +26,11 @@ TrueNAS SCALE runs as a virtualized storage appliance on Proxmox VE (`pve-1`), d
 flowchart TD
     subgraph Host["Proxmox Host (pve-1)"]
         subgraph TrueNAS["TrueNAS SCALE (VM 100)"]
-            ZFSFast["ZFS: pool-fast (2TB NVMe)<br/>Dataset: /mnt/pool-fast/vms<br/>sync=disabled"]
-            ZFSPool1["ZFS: pool-1 (4TB Mirror)<br/>Datasets: projects, timemachine<br/>sync=standard"]
-            ZFSPool2["ZFS: pool-2 (2TB WD Blue)<br/>Dataset: /mnt/pool-2/proxmox<br/>sync=disabled | Spindown"]
+            ZFSFast["ZFS: pool-fast (2TB NVMe: nvme0n1)<br/>Dataset: /mnt/pool-fast/vms<br/>sync=disabled | 24/7 Always Active"]
+            ZFSPool1["ZFS: pool-1 (4TB Mirror: sdb, sdc)<br/>Datasets: home, archive (timemachine, data, OwnCloud)<br/>sync=standard | APM 127 (30 min standby)"]
+            ZFSPool2["ZFS: pool-2 (2TB Mirror: sdd, sde)<br/>Datasets: proxmox, Data<br/>sync=disabled | APM 127 (30 min standby)"]
             NFSD["NFS Kernel Server (Port 2049)"]
-            SMBD["SMB Server (Time Machine & Projects)"]
+            SMBD["SMB Server (Time Machine & Home)"]
         end
 
         VMBR0["Internal Linux Bridge (vmbr0)<br/>RAM-Speed Transfer (15-25+ Gbps)"]
@@ -40,29 +40,31 @@ flowchart TD
     TrueNAS --> ZFSPool1
     TrueNAS --> ZFSPool2
 
-    ZFSFast --> NFSD
-    ZFSPool2 --> NFSD
-    ZFSPool1 --> SMBD
+    ZFSFast -->|NFS: pool-fast/vms| NFSD
+    ZFSPool2 -->|NFS: pool-2/proxmox| NFSD
+    ZFSPool1 -->|NFS: pool-1/home| NFSD
+    ZFSPool1 -->|SMB: home, archive/timemachine| SMBD
 
-    NFSD -->|NFS Export (truenas-fast)| VMBR0
-    NFSD -->|NFS Export (truenas-proxmox)| VMBR0
+    NFSD -->|NFS Exports| VMBR0
+    SMBD -->|SMB Shares| VMBR0
 ```
 
 ---
 
-## 2. Storage Pool Layout & Specifications
+## 2. Storage Pool Layout & Physical Disk Inventory
 
-TrueNAS organizes storage into three distinct tiers:
+TrueNAS organizes storage into three distinct tiers based on performance, capacity, and power efficiency:
 
-| Pool Name | Physical Drives | Drive Models | Layout / Topology | Purpose | Key Settings |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **`pool-fast`** | 1x 2TB NVMe | PNY CS3030 (`/dev/nvme0n1`) | Single-disk Stripe | Shared VM disks & containers | `sync=disabled`, `atime=off` |
-| **`pool-1`** | 2x 4TB HDDs | Seagate IronWolf (`sdb`, `sdc`) | Mirror (`mirror-0`) | Personal files, Git code, Time Machine | `sync=standard`, quotas enforced |
-| **`pool-2`** | 1x 2TB HDD | WD Blue 7200 RPM (`sdd`) | Single-disk Stripe | Proxmox ISOs, templates, VM backups | `sync=disabled`, APM 127 + Spindown |
+| Pool Name | Physical Device | Model / Serial Number | Disk Size | Layout / Topology | Datasets & Roles | Power & Sync Settings |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **`boot-pool`** | `sda` | Virtual SCSI (`drive-scsi0`) | 32 GiB | Virtual Disk (`local-lvm`) | • TrueNAS Appliance Root OS | Default |
+| **`pool-fast`** | `nvme0n1` | PNY CS3030 (`PNY212021051901002DF`) | 1.82 TiB (2TB) | Single-disk Stripe (NVMe) | • `vms` (Proxmox VM root disks) | `sync=disabled`, `atime=off`<br>Always Active (No Spindown) |
+| **`pool-1`** | `sdb`<br>`sdc` | Seagate IronWolf 5400 RPM<br>• `sdb` (`WW61G97T`)<br>• `sdc` (`WW64P7V0` ST4000VN006) | 3.64 TiB<br>3.64 TiB | Mirror (`mirror-0`)<br>(~3.64 TiB Usable) | • `home` (User vaults, `.ssh`, `projects`)<br>• `archive/timemachine` (Apple Time Machine)<br>• `archive/data` (Cold storage)<br>• `archive/OwnCloud` (Archived files) | `sync=standard`<br>**APM: 127**<br>**HDD Standby: 30 min** |
+| **`pool-2`** | `sdd`<br>`sde` | Western Digital 2TB<br>• `sdd` (`WD-WXP2A1338SC8`)<br>• `sde` (`WD-WXN2D43NSZX4`) | 1.82 TiB<br>1.82 TiB | Mirror (`mirror-0`)<br>(~1.82 TiB Usable) | • `proxmox` (ISOs, VM backup snapshots)<br>• `Data` (General archive) | `sync=disabled`<br>**APM: 127**<br>**HDD Standby: 30 min** |
 
 ---
 
-## 3. Dataset Tuning & Performance Rationale
+## 3. Dataset Tuning & Power Management Rationale
 
 ### A. Fast VM Disks (`pool-fast/vms`)
 * **Path**: `/mnt/pool-fast/vms`
@@ -74,21 +76,26 @@ TrueNAS organizes storage into three distinct tiers:
   * **Result**: Near-memory write speeds (**~15–25+ Gbps**) across the `vmbr0` virtual bridge.
   * **Integrity**: ZFS Copy-on-Write (CoW) guarantees the storage filesystem structure will never corrupt. In an ungraceful host crash, only the last up-to 5 seconds of in-flight VM writes could be lost.
 
-### B. Proxmox Backups & ISOs (`pool-2/proxmox`)
-* **Path**: `/mnt/pool-2/proxmox`
-* **Sync Behavior**: **`sync=disabled`**
-* **Drive Spindown Configuration**:
-  * Advanced Power Management (APM): **Level 127** (Permits spindown while keeping drive responsive).
-  * Standby Spindown Timer: **20–30 Minutes**.
-  * Hardware state verified via: `hdparm -y /dev/sdd` (confirms mechanical platter shutdown when idle).
+### B. HDD Power Management & Spindown Architecture (All Mechanical Drives)
+All mechanical hard drives across both `pool-1` and `pool-2` (`sdb`, `sdc`, `sdd`, `sde`) share an identical energy and acoustic profile:
+* **Advanced Power Management (APM)**: **Level 127** (Permits platter spin-down while keeping drive electronics responsive to I/O).
+* **HDD Standby Timer**: **30 Minutes** (Drives remain spinning during active work sessions, parking platters and spinning down only after 30 minutes of continuous idle to prevent excessive Start/Stop mechanical fatigue).
+* **Homelab Acoustic Rationale**:
+  * Because 24/7 VM root disks and active container workloads live exclusively on the silent **`pool-fast` NVMe**, mechanical drives remain spun down when not in use.
+  * The 30-minute window ensures the drives only experience 1–3 gentle spin cycles per day (e.g. overnight or extended idle) rather than aggressive thrashing.
 
-### C. Projects & Time Machine (`pool-1`)
-* **Projects Dataset**: `/mnt/pool-1/projects/akraradets`
-  * Owner: `akraradets` (UID 3000)
-  * Group: `akraradets` (GID 3000)
-  * Permissions: Standard POSIX / NFSv4 ACLs (`755`).
-* **Time Machine Dataset**: `/mnt/pool-1/timemachine`
-  * Quota: Hard quota enforced (e.g. 1.5 TB) to prevent Apple Time Machine from growing indefinitely and consuming the entire pool.
+### C. User Vaults, Projects, Archive & Time Machine (`pool-1`)
+* **User Vaults & Projects Dataset**: `/mnt/pool-1/home` (~685 GiB)
+  * Owner: `root` (UID 0), Group: `root` (GID 0), Mode: `755`
+  * Subdirectories: `/mnt/pool-1/home/<username>/` (Mode `750`, owned by `<username>`)
+    * `.ssh/` (Centralized key pairs, config, authorized_keys)
+    * `projects/` (Personal Git repositories, code, and project assets)
+    * `documents/` (Personal files)
+  * Purpose: User persistent assets and projects isolated from desktop cache bloat.
+* **Archive Dataset**: `/mnt/pool-1/archive` (~975 GiB)
+  * **`archive/timemachine`** (~780 GiB): Dedicated Apple Time Machine storage with hard quota enforced (e.g. 1.5 TB) to prevent indefinite pool growth.
+  * **`archive/data`** (~120 GiB): Cold storage and historical files.
+  * **`archive/OwnCloud`** (~76 GiB): Archived cloud storage data.
 
 ---
 
@@ -100,18 +107,19 @@ TrueNAS exports storage over NFS to Proxmox and client workloads.
 * **Dataset Path**: `/mnt/pool-fast/vms`
 * **Description**: `Proxmox Shared VM Storage`
 * **Authorized Networks**: `192.168.55.0/24`
-* **Advanced Permissions**:
-  * **Maproot User**: `root`
-  * **Maproot Group**: `root`
-  * **Security**: `sys`
+* **Advanced Permissions**: Maproot `root:root`, Security `sys`
 
 ### Export 2: Proxmox ISO & Backup Storage
 * **Dataset Path**: `/mnt/pool-2/proxmox`
-* **Description**: `Proxmox ISO and Backup Storage`
+* **Description**: `Proxmox Storage (ISOs, Backups, Snippets)`
 * **Authorized Networks**: `192.168.55.0/24`
-* **Advanced Permissions**:
-  * **Maproot User**: `root`
-  * **Maproot Group**: `root`
+* **Advanced Permissions**: Maproot `root:root`
+
+### Export 3: User Storage & Projects (Multi-User & LDAP Ready)
+* **Dataset Path**: `/mnt/pool-1/home`
+* **Description**: `Centralized User Vaults & Projects`
+* **Authorized Networks**: `192.168.55.0/24`
+* **Advanced Permissions**: Maproot `root:root` (allows `pam_mkhomedir` / admin provisioning)
 
 ---
 
@@ -122,12 +130,52 @@ TrueNAS exports storage over NFS to Proxmox and client workloads.
   * UID: **`3000`**
   * Primary Group: **`akraradets`** (GID `3000`)
 * **SMB Shares**:
-  * **`projects`**: Path `/mnt/pool-1/projects/akraradets` (accessible by macOS workstations and Linux VMs).
-  * **`TimeMachine`**: Path `/mnt/pool-1/timemachine` with **Time Machine** multi-user option enabled for automatic macOS Bonjour discovery.
+  * **`home`**: Path `/mnt/pool-1/home` with **`Use as Home Share` enabled** (automatically maps users to `/mnt/pool-1/home/%U`, giving immediate Finder access to `projects/` and personal files).
+  * **`TimeMachine`**: Path `/mnt/pool-1/archive/timemachine` with **Time Machine** multi-user option enabled for automatic macOS Bonjour discovery.
 
 ---
 
-## 6. Automated ACME DNS-01 SSL Certificates (Google Cloud DNS)
+## 6. Data Protection: Snapshots, Scrubs & Disaster Recovery
+
+TrueNAS enforces declarative data protection across all storage pools to guarantee resilience against human error, ransomware, drive failure, and silent bitrot.
+
+### A. Periodic ZFS Snapshot Policy
+
+ZFS snapshots are instantaneous point-in-time state records that consume zero additional space until underlying data blocks are modified or deleted:
+
+| Dataset Target | Frequency | Retention Schedule | Recursive? | Purpose & Protection Scope |
+| :--- | :--- | :--- | :--- | :--- |
+| **`pool-1/home`** | Daily (00:00) | **14 Days** Rolling | **Yes** | User vaults, `.ssh` credentials, and Git projects against accidental deletion or ransomware. |
+| **`pool-fast/vms`** | Daily (03:00) | **7 Days** Rolling | **Yes** | Quick rollback for Proxmox guest VM root disk filesystems before major updates. |
+| **`pool-1/archive/timemachine`** | *Disabled* | N/A | No | Omitted intentionally; Apple Time Machine natively manages its own sparsebundles. |
+
+#### Client-Side Snapshot Recovery (Zero GUI Dependency)
+Users can restore accidentally deleted or corrupted files directly from any client workstation without opening the TrueNAS GUI:
+```bash
+# Browse snapshots for user akraradets on the workstation
+ls -la /mnt/pool-1/home/akraradets/.zfs/snapshot/
+
+# Restore a deleted file from yesterday's snapshot:
+cp /mnt/pool-1/home/akraradets/.zfs/snapshot/auto-2026-10-18_00-00/projects/app/main.go ~/projects/app/
+```
+
+### B. ZFS Scrub Schedules (Integrity & Bitrot Self-Healing)
+
+ZFS scrubs cryptographically verify every stored data block against its hash checksum. If bitrot or physical sector corruption is detected on a drive, ZFS automatically recalculates and writes clean parity data from the mirror pair:
+
+| Pool | Physical Drives | Schedule | Frequency | Rationale |
+| :--- | :--- | :--- | :--- | :--- |
+| **`pool-fast`** | 1x 2TB NVMe | Every 2nd Sunday (02:00) | **14 Days** | High-velocity VM disk operations verified quickly on NVMe. |
+| **`pool-1`** | 2x 4TB Mirror | 1st Sunday of Month (03:00) | **30 Days** | Monthly scrub prevents excessive mechanical platter wear while ensuring archive integrity. |
+| **`pool-2`** | 2x 2TB Mirror | 15th of Month (03:00) | **30 Days** | Staggered from `pool-1` to avoid concurrent I/O load on the SATA controller. |
+
+### C. Physical Drive Health (S.M.A.R.T. Monitoring)
+* **Background Monitoring (`smartd`)**: TrueNAS continuously polls drive hardware attributes (reallocated sectors, pending sectors, temperature limits) every 30 minutes.
+* **Proactive Alerts**: Any critical threshold excursion immediately dispatches an alert banner to the TrueNAS management interface and configured administrative channels.
+
+---
+
+## 7. Automated ACME DNS-01 SSL Certificates (Google Cloud DNS)
 
 The TrueNAS Web GUI (`https://192.168.55.100`) uses valid Let's Encrypt SSL/TLS certificates issued and renewed with **zero inbound ports** using ACME DNS-01 challenges and Google Cloud DNS.
 

@@ -97,8 +97,8 @@ Remote administration uses **NetBird Cloud** ([app.netbird.io](https://app.netbi
 | :--- | :--- | :--- |
 | `pve-1.home.sinsamersuk.net` | `192.168.55.10` | Proxmox VE Web Management GUI (`:8006`) & SSH |
 | `truenas.home.sinsamersuk.net` | `192.168.55.100` | TrueNAS SCALE Web GUI (`:443`), SMB, NFS |
-| `work-desktop.home.sinsamersuk.net` | `192.168.55.110` | Desktop Workstation VM (SPICE / Remote Desktop) |
-| `work-dev.home.sinsamersuk.net` | `192.168.55.120` | Headless Development VM (Docker & Pipelines) |
+| `work-desktop.home.sinsamersuk.net` | `192.168.55.110` | Desktop Workstation VM (Intel UHD 770, Moonlight/Sunshine) |
+| `work-compute.home.sinsamersuk.net` | `192.168.55.120` | Headless Compute Server (NVIDIA RTX 3060, Docker, CUDA) |
 
 ---
 
@@ -106,23 +106,27 @@ Remote administration uses **NetBird Cloud** ([app.netbird.io](https://app.netbi
 
 Rather than running multiple power-hungry physical servers connected over a slow 1 Gbps physical switch, all compute and storage workloads are consolidated onto a single bare-metal host.
 
-### Hypervisor: Proxmox VE 8.x (`pve-1`)
+### Hypervisor: Proxmox VE 8.x / 9.x (`pve-1`)
 - Installed bare-metal on internal NVMe/SSD storage.
-- IOMMU (`intel_iommu=on` or `amd_iommu=on`) and VFIO kernel modules enabled for hardware passthrough.
+- IOMMU (`intel_iommu=on`) and VFIO kernel modules enabled for hardware passthrough.
 
 ### Storage Appliance: TrueNAS SCALE VM (`vm_id = 100`)
-- **Direct PCIe Passthrough (`hostpci`)**: The motherboard SATA controller or SAS HBA is passed directly to TrueNAS. TrueNAS talks directly to bare-metal hard drives for S.M.A.R.T. health diagnostics and ZFS scrub integrity.
+- **Direct PCIe Passthrough (`hostpci`)**: Motherboard SATA controller (`0000:00:17.0`) and fast NVMe controller (`0000:03:00.0`) passed directly to TrueNAS. TrueNAS talks directly to bare-metal drives for S.M.A.R.T. health diagnostics and ZFS scrub integrity.
 - **OS Boot Drive**: Dedicated 32 GB virtual disk on NVMe (`local-lvm`) using VirtIO SCSI.
-- **Memory**: 16 GB dedicated fixed RAM (memory ballooning disabled for ZFS stability).
-- **Apple Time Machine**: Dedicated ZFS dataset (`tank/backups/timemachine`) exported via SMB with strict quotas to prevent backups from overfilling the pool.
+- **Memory**: 32 GB dedicated fixed RAM (memory ballooning strictly disabled for ZFS ARC stability).
+- **Storage Pools**:
+  - `pool-fast` (2TB NVMe): Shared Proxmox VM root disks (`pool-fast/vms`).
+  - `pool-1` (4TB Mirror): User vaults & projects (`pool-1/home`) and Time Machine (`pool-1/archive/timemachine`).
+  - `pool-2` (2TB Mirror): Proxmox ISO catalog and VM backup snapshots (`pool-2/proxmox`).
+- **Apple Time Machine**: Dedicated ZFS dataset (`/mnt/pool-1/archive/timemachine`) exported via SMB with strict quotas to prevent backups from overfilling the pool.
 
 ### High-Speed Inter-VM Interconnect (`vmbr0`)
 - Compute VMs and TrueNAS connect over the internal Linux bridge (`vmbr0`) using `virtio-net`.
 - Network traffic between Workstation VMs and TrueNAS storage travels entirely within host RAM, achieving **sustained speeds of ~15–25+ Gbps** without requiring physical 10GbE network cards or switches.
 
 ### Workstation & Compute Workloads
-- Supports both headless development environments (accessed via **VS Code / Cursor Remote - SSH**) and graphical desktop environments (streamed via **Sunshine / Moonlight** or SPICE).
-- User identity is unified with UID `3000` (`akraradets`), allowing direct read/write access to TrueNAS NFS project datasets over `vmbr0` at near-memory speeds (~15–25+ Gbps).
+- Supports both headless development environments (accessed via **VS Code / Cursor Remote - SSH**) and graphical desktop environments (streamed via **Sunshine + Moonlight** with Intel Quick Sync hardware acceleration).
+- User identity is unified with UID `3000` (`akraradets`), allowing direct read/write access to TrueNAS NFS datasets over `vmbr0` at near-memory speeds (~15–25+ Gbps).
 - Detailed protocol evaluation and runbooks are documented in [[workstation|Workstation & Dev Environments]].
 
 ---

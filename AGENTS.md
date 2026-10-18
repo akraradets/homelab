@@ -25,8 +25,7 @@ This repository serves two primary functions:
   - **Headless GPU Compute Server (VM 120)**: Ubuntu Server with **NVIDIA GeForce RTX 3060 12GB** passthrough (`0000:01:00.0`, IOMMU Group 15) for CUDA, Docker, and AI/ML workloads accessed via **VS Code / Cursor Remote - SSH**.
   - Standardized identity: **`akraradets` (UID 3000, GID 3000)** strictly aligned with TrueNAS ZFS dataset permissions.
   - Both nodes mount TrueNAS storage over the virtual bridge (`vmbr0`) at **near-memory speeds (~15–25+ Gbps)**:
-    - `/mnt/pool-1/home` (User personal home directory files)
-    - `/mnt/pool-1/projects` (Git repositories, Docker volumes, project assets)
+    - `/mnt/pool-1/home` (User personal home vaults, `.ssh` credentials, and `projects/`)
 - **Remote Access (Zero Inbound Ports)**:
   - **NetBird Cloud** (managed free tier at `app.netbird.io`).
   - Proxmox host (or a dedicated LXC) functions as a **Routing Peer / Subnet Router** forwarding `192.168.55.0/24`.
