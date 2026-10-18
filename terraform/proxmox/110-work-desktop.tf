@@ -1,13 +1,13 @@
 # ==============================================================================
 # Workstation Desktop Virtual Machine (work-desktop)
-# Ubuntu Desktop with Intel UHD 770 Passthrough & Sunshine/Moonlight Streaming
+# Ubuntu Desktop with NVIDIA GeForce RTX 3060 12GB Passthrough & Sunshine
 # ==============================================================================
 resource "proxmox_virtual_environment_vm" "work_desktop" {
   node_name   = "pve-1"
   vm_id       = 110
   name        = "work-desktop"
-  description = "Ubuntu 26.04 Desktop Workstation (Intel UHD 770 Passthrough, UID 3000)"
-  tags        = ["workstation", "desktop", "intel-uhd", "moonlight", "terraform"]
+  description = "Ubuntu 26.04 Desktop Workstation (NVIDIA RTX 3060 12GB Passthrough, UID 3000)"
+  tags        = ["workstation", "desktop", "nvidia-rtx3060", "sunshine", "terraform"]
 
   machine       = "q35"
   bios          = "ovmf"
@@ -20,7 +20,7 @@ resource "proxmox_virtual_environment_vm" "work_desktop" {
   started       = true
   on_boot       = true
   tablet_device = true
-  boot_order    = ["ide3", "scsi0"]
+  boot_order    = ["scsi0"]
 
   startup {
     order    = 2
@@ -39,7 +39,6 @@ resource "proxmox_virtual_environment_vm" "work_desktop" {
 
   memory {
     dedicated = 16384
-    floating  = 4096
   }
 
   network_device {
@@ -66,26 +65,18 @@ resource "proxmox_virtual_environment_vm" "work_desktop" {
     ssd          = true
   }
 
-  # Ubuntu Desktop ISO (CD-ROM)
-  cdrom {
-    enabled   = true
-    file_id   = "truenas-proxmox:iso/ubuntu-26.04.1-desktop-amd64.iso"
-    interface = "ide3"
-  }
-
-  # Virtual Display for Proxmox Web noVNC Console
+  # Headless Display (Pure NVIDIA GPU Output, Zero Emulated Displays)
   vga {
-    type   = "virtio"
-    memory = 32
+    type = "none"
   }
 
-  # Intel UHD Graphics 770 Hardware Passthrough (Quick Sync Video)
+  # NVIDIA GeForce RTX 3060 12GB PCIe Hardware Passthrough
   hostpci {
     device  = "hostpci0"
-    mapping = proxmox_virtual_environment_hardware_mapping_pci.intel_uhd.name
+    mapping = proxmox_virtual_environment_hardware_mapping_pci.nvidia_rtx3060.name
     pcie    = true
     rombar  = false
-    xvga    = false
+    xvga    = true
   }
 
   serial_device {}

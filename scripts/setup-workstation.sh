@@ -1,20 +1,18 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Workstation Automated Setup: RDP, Docker, NFS /etc/fstab, VS Code & Identity
-# Target: Ubuntu 24.04 LTS (VM 110 : work-desktop)
+# Essential Workstation Setup: SSH, QEMU Agent, TrueNAS Mount & Docker
+# Target: Ubuntu (VM 110 : work-desktop / VM 120 : work-compute)
+# 1:1 Path Parity with TrueNAS: /mnt/pool-1/home
 # ==============================================================================
 
 set -euo pipefail
 
-TARGET_USER="akraradets"
-TARGET_UID="3000"
-TARGET_GID="3000"
 TRUENAS_IP="192.168.55.100"
-TRUENAS_PROJECTS_EXPORT="/mnt/pool-1/projects/akraradets"
-LOCAL_MOUNT_POINT="/home/${TARGET_USER}/projects"
+TRUENAS_HOME_EXPORT="/mnt/pool-1/home"
+LOCAL_HOME_MOUNT="/mnt/pool-1/home"
 
 echo "=========================================================="
-echo " Starting Workstation Automated Setup on $(hostname)"
+echo " Starting Essential Workstation Setup on $(hostname)"
 echo "=========================================================="
 
 # Ensure running as root
@@ -26,93 +24,45 @@ fi
 export DEBIAN_FRONTEND=noninteractive
 
 # ------------------------------------------------------------------------------
-# 1. Align User Identity (UID 3000, GID 3000) & SSH Permissions
+# 1. OpenSSH Server & QEMU Guest Agent
 # ------------------------------------------------------------------------------
-echo "==> [1/7] Ensuring user ${TARGET_USER} exists with UID ${TARGET_UID}, GID ${TARGET_GID}..."
-
-# Ensure target group exists
-if getent group "${TARGET_USER}" >/dev/null; then
-    groupmod -g "${TARGET_GID}" "${TARGET_USER}" || true
-else
-    groupadd -g "${TARGET_GID}" "${TARGET_USER}"
-fi
-
-# Create user or update existing UID
-if id "${TARGET_USER}" >/dev/null 2>&1; then
-    usermod -u "${TARGET_UID}" -g "${TARGET_GID}" "${TARGET_USER}" || true
-else
-    echo "Creating user ${TARGET_USER} with UID ${TARGET_UID}, GID ${TARGET_GID}..."
-    useradd -u "${TARGET_UID}" -g "${TARGET_GID}" -m -s /bin/bash -c "Akraradet Sinsamersuk" "${TARGET_USER}"
-    echo "${TARGET_USER}:ubuntu" | chpasswd
-fi
-
-# Add to sudo group
-usermod -aG sudo "${TARGET_USER}"
-
-# Ensure sudoers does not prompt for password (homelab workstation convenience)
-echo "${TARGET_USER} ALL=(ALL) NOPASSWD:ALL" > "/etc/sudoers.d/99-${TARGET_USER}-nopasswd"
-chmod 440 "/etc/sudoers.d/99-${TARGET_USER}-nopasswd"
-
-# Setup SSH keys (copy from bootstrap user if available)
-mkdir -p "/home/${TARGET_USER}/.ssh"
-if [[ -f "/home/ubuntu/.ssh/authorized_keys" ]] && [[ ! -f "/home/${TARGET_USER}/.ssh/authorized_keys" ]]; then
-    cp "/home/ubuntu/.ssh/authorized_keys" "/home/${TARGET_USER}/.ssh/authorized_keys"
-fi
-
-# Fix home directory and SSH permissions (fixes OpenSSH StrictModes rejection)
-chmod 750 "/home/${TARGET_USER}"
-chmod 700 "/home/${TARGET_USER}/.ssh"
-if [[ -f "/home/${TARGET_USER}/.ssh/authorized_keys" ]]; then
-    chmod 600 "/home/${TARGET_USER}/.ssh/authorized_keys"
-fi
-chown -R "${TARGET_UID}:${TARGET_GID}" "/home/${TARGET_USER}"
-
-# ------------------------------------------------------------------------------
-# 2. Disable XDG Directory Bloat (Keep $HOME Clean)
-# ------------------------------------------------------------------------------
-echo "==> [2/6] Disabling XDG user directory auto-creation..."
-mkdir -p /etc/xdg
-cat << 'EOF' > /etc/xdg/user-dirs.conf
-enabled=False
-EOF
-
-# ------------------------------------------------------------------------------
-# 3. Base Updates & NFS Client (/etc/fstab)
-# ------------------------------------------------------------------------------
-echo "==> [3/6] Installing NFS utilities and configuring /etc/fstab..."
+echo "==> [1/3] Installing & enabling OpenSSH Server and QEMU Guest Agent..."
 apt-get update -y
 apt-get install -y --no-install-recommends \
-    nfs-common \
-    curl \
-    wget \
-    gnupg \
+    openssh-server \
+    qemu-guest-agent \
     ca-certificates \
-    git \
-    tmux \
-    htop \
-    build-essential \
-    net-tools
+    curl \
+    gnupg
 
-# Create mount directory
-mkdir -p "${LOCAL_MOUNT_POINT}"
-chown "${TARGET_UID}:${TARGET_GID}" "${LOCAL_MOUNT_POINT}"
+systemctl enable --now ssh
+systemctl enable --now qemu-guest-agent
 
-# Configure /etc/fstab for TrueNAS projects share
-FSTAB_LINE="${TRUENAS_IP}:${TRUENAS_PROJECTS_EXPORT} ${LOCAL_MOUNT_POINT} nfs defaults,_netdev,bg,intr,noatime 0 0"
+# ------------------------------------------------------------------------------
+# 2. NFS Client & TrueNAS Mount (1:1 Path Parity: /mnt/pool-1/home)
+# ------------------------------------------------------------------------------
+echo "==> [2/3] Installing NFS client and mounting TrueNAS storage..."
+apt-get install -y --no-install-recommends nfs-common
 
-if ! grep -q "${TRUENAS_PROJECTS_EXPORT}" /etc/fstab; then
-    echo "Adding TrueNAS NFS mount to /etc/fstab..."
-    echo "${FSTAB_LINE}" >> /etc/fstab
+# Create mount point matching TrueNAS exact path
+mkdir -p "${LOCAL_HOME_MOUNT}"
+
+# Configure /etc/fstab for TrueNAS home
+FSTAB_HOME="${TRUENAS_IP}:${TRUENAS_HOME_EXPORT} ${LOCAL_HOME_MOUNT} nfs defaults,_netdev,bg,intr,noatime,nfsvers=4 0 0"
+
+if ! grep -q "${TRUENAS_HOME_EXPORT}" /etc/fstab; then
+    echo "Adding TrueNAS home mount to /etc/fstab..."
+    echo "${FSTAB_HOME}" >> /etc/fstab
 fi
 
 # Attempt mount
-echo "Mounting ${LOCAL_MOUNT_POINT}..."
-mount "${LOCAL_MOUNT_POINT}" || echo "Warning: NFS mount failed (verify TrueNAS pool-1 NFS export is active)"
+echo "Mounting TrueNAS storage..."
+mount "${LOCAL_HOME_MOUNT}" || echo "Notice: Home NFS mount pending TrueNAS export activation"
 
 # ------------------------------------------------------------------------------
-# 4. Install Docker CE & Docker Compose
+# 3. Docker CE & Docker Compose Plugin
 # ------------------------------------------------------------------------------
-echo "==> [4/6] Installing official Docker CE & Docker Compose plugin..."
+echo "==> [3/3] Installing official Docker CE & Compose plugin..."
 install -m 0755 -d /etc/apt/keyrings
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
 chmod a+r /etc/apt/keyrings/docker.asc
@@ -123,94 +73,25 @@ echo \
   tee /etc/apt/sources.list.d/docker.list > /dev/null
 
 apt-get update -y
-apt-get install -y \
+apt-get install -y --no-install-recommends \
     docker-ce \
     docker-ce-cli \
     containerd.io \
     docker-buildx-plugin \
     docker-compose-plugin
 
-# Add user to docker group
-usermod -aG docker "${TARGET_USER}"
 systemctl enable --now docker
 
-# ------------------------------------------------------------------------------
-# 5. Install Desktop Environment & XRDP (RDP Server)
-# ------------------------------------------------------------------------------
-echo "==> [5/6] Installing Ubuntu GNOME Minimal, XRDP, and Polkit rules..."
-apt-get install -y --no-install-recommends \
-    ubuntu-desktop-minimal \
-    xrdp \
-    xorgxrdp
-
-# Grant xrdp user access to ssl certificates
-adduser xrdp ssl-cert || true
-
-# Disable Wayland in GDM to force X11 compatibility
-if [[ -f /etc/gdm3/custom.conf ]]; then
-    sed -i 's/^#WaylandEnable=false/WaylandEnable=false/' /etc/gdm3/custom.conf
+# If run via sudo, add the calling user to docker group
+if [[ -n "${SUDO_USER:-}" ]] && [[ "${SUDO_USER}" != "root" ]]; then
+    usermod -aG docker "${SUDO_USER}"
+    echo "Added user ${SUDO_USER} to docker group."
 fi
 
-# Prevent Polkit authorization popups on RDP login (colord / NetworkManager)
-mkdir -p /etc/polkit-1/rules.d
-cat << 'EOF' > /etc/polkit-1/rules.d/02-allow-colord.rules
-polkit.addRule(function(action, subject) {
-    if ((action.id == "org.freedesktop.color-manager.create-device" ||
-         action.id == "org.freedesktop.color-manager.create-profile" ||
-         action.id == "org.freedesktop.color-manager.delete-device" ||
-         action.id == "org.freedesktop.color-manager.delete-profile" ||
-         action.id == "org.freedesktop.color-manager.modify-device" ||
-         action.id == "org.freedesktop.color-manager.modify-profile") &&
-        subject.isInGroup("sudo")) {
-        return polkit.Result.YES;
-    }
-});
-EOF
-
-cat << 'EOF' > /etc/polkit-1/rules.d/03-allow-networkmanager.rules
-polkit.addRule(function(action, subject) {
-    if (action.id.indexOf("org.freedesktop.NetworkManager.") == 0 && subject.isInGroup("sudo")) {
-        return polkit.Result.YES;
-    }
-});
-EOF
-
-# Ensure user starts standard GNOME session on RDP connect
-cat << 'EOF' > "/home/${TARGET_USER}/.xsessionrc"
-export GNOME_SHELL_SESSION_MODE=ubuntu
-export XDG_CURRENT_DESKTOP=ubuntu:GNOME
-export XDG_CONFIG_DIRS=/etc/xdg/xdg-ubuntu:/etc/xdg
-EOF
-chown "${TARGET_UID}:${TARGET_GID}" "/home/${TARGET_USER}/.xsessionrc"
-
-# Restart XRDP services so the daemon picks up the ssl-cert group membership
-systemctl daemon-reload
-systemctl restart xrdp xrdp-sesman
-systemctl enable xrdp xrdp-sesman
-
-# ------------------------------------------------------------------------------
-# 6. Install Official Microsoft VS Code
-# ------------------------------------------------------------------------------
-echo "==> [6/7] Installing Microsoft Visual Studio Code..."
-curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor -o /etc/apt/keyrings/packages.microsoft.gpg
-chmod a+r /etc/apt/keyrings/packages.microsoft.gpg
-
-echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/packages.microsoft.gpg] https://packages.microsoft.com/repos/code stable main" | \
-  tee /etc/apt/sources.list.d/vscode.list > /dev/null
-
-apt-get update -y
-apt-get install -y code
-
-# ------------------------------------------------------------------------------
-# 7. Install NetBird Client (Zero-Tier Remote Mesh)
-# ------------------------------------------------------------------------------
-echo "==> [7/7] Installing NetBird Client..."
-curl -fsSL https://pkgs.netbird.io/install.sh | sh
-
 echo "=========================================================="
-echo " Workstation Setup Successfully Completed!"
-echo " - Desktop RDP:     192.168.55.110:3389"
+echo " Essential Workstation Setup Completed!"
+echo " - SSH Service:     active"
+echo " - QEMU Agent:      active"
+echo " - TrueNAS Storage: ${LOCAL_HOME_MOUNT} (Mounts user vaults & projects)"
 echo " - Docker Version:  $(docker --version)"
-echo " - User:            ${TARGET_USER} (UID ${TARGET_UID}, GID ${TARGET_GID})"
-echo " - Projects Mount:  ${LOCAL_MOUNT_POINT}"
 echo "=========================================================="

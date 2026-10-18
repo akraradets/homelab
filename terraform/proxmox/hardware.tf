@@ -46,3 +46,18 @@ resource "proxmox_virtual_environment_hardware_mapping_pci" "intel_uhd" {
     }
   ]
 }
+
+resource "proxmox_virtual_environment_hardware_mapping_pci" "nvidia_rtx3060" {
+  name    = "nvidia-rtx3060"
+  comment = "NVIDIA GeForce RTX 3060 12GB for Compute & Moonlight Streaming"
+
+  map = [
+    {
+      node        = "pve-1"
+      path        = "0000:01:00"
+      id          = "10de:2504" # Standard GA106 RTX 3060 (LHR)
+      subsystem_id = "1458:4073"
+      iommu_group = 15
+    }
+  ]
+}

@@ -70,12 +70,12 @@ During prototype testing on Ubuntu 24.04, three remote access approaches were ev
   - **Native Battery Life**: No video decoders active on the client laptop.
   - **Compute Offload**: Heavy compilation, Docker containers, and test suites execute on the 14-core Intel i5-13500 hypervisor.
 
-### Approach B: Sunshine + Moonlight (High-Performance GUI)
-* **How It Works**: A full desktop environment runs with [Sunshine](https://github.com/LizardByte/Sunshine) encoding the screen via the host's Intel UHD Graphics 770 (Quick Sync Video) and streaming to the [Moonlight](https://moonlight-stream.org/) client.
-* **Key Findings**:
-  - Requires hardware video encoding (`/dev/dri/renderD128` passed through from Proxmox) to achieve smooth 60–120 FPS.
-  - Significantly outperforms RDP for fluid window dragging, animations, and graphical applications.
-  - Best suited when a complete Linux GUI desktop (browser, IDE, GUI tools) is required on a non-Linux client.
+### Approach B: Sunshine + Moonlight with Dedicated GPU (Standardized for VM 120)
+* **How It Works**: High-performance game and desktop streaming using [Sunshine](https://github.com/LizardByte/Sunshine) paired with [Moonlight](https://moonlight-stream.org/) client.
+* **Standardized Hardware**: Dedicated **NVIDIA GeForce RTX 3060 12GB** (`0000:01:00.0`, IOMMU Group 15) passed to **`work-compute` (VM 120)** using NVENC hardware acceleration.
+* **Architectural Learning (Intel UHD 770 Passthrough Retired)**:
+  - Intel Core i5-13500 integrated graphics (`0000:00:02.0`) sits in **IOMMU Group 0** with the CPU Host Bridge memory controller, suffers from driver contention with the Proxmox host's `i915`, and lacks PCIe FLR (Function-Level Reset), causing VM and hypervisor kernel lockups.
+  - Full PCIe GPU passthrough is standardized exclusively on the dedicated NVIDIA GPU (IOMMU Group 15). See [[sunshine|Sunshine GUI Streaming Runbook]].
 
 ### Approach C: Traditional XRDP / Microsoft Remote Desktop (Evaluated & Retired)
 * **How It Works**: `xrdp` and `xrdp-sesman` spawn virtual X11 displays (`:10`) on user login.
@@ -115,16 +115,53 @@ Because traffic travels over the virtual bridge (`vmbr0`) entirely in host RAM, 
 
 ## 4. Automated Workstation Provisioning
 
-The repository includes an idempotent setup script at [`scripts/setup-workstation.sh`](file:///Users/akraradets/Projects/sinsamersuk/homelab/scripts/setup-workstation.sh). It automates the essentials:
+The repository provides two modular, idempotent scripts to provision compute nodes:
 
+### Step 1: Base Machine Setup (`scripts/setup-workstation.sh`)
+Automates machine-level essentials (runs once per node):
 1. **OpenSSH Server & QEMU Guest Agent**: Installs and activates `openssh-server` and `qemu-guest-agent`.
 2. **TrueNAS Storage**: Mounts `/mnt/pool-1/home` with 1:1 path parity in `/etc/fstab`.
-3. **Docker Engine**: Installs official Docker CE, Compose plugin, and grants the calling user Docker permissions.
+3. **Docker Engine**: Installs official Docker CE, Compose plugin, and prepares Docker daemon.
 
-To run on a freshly deployed VM:
 ```bash
-scp scripts/setup-workstation.sh ubuntu@192.168.55.110:/tmp/
-ssh ubuntu@192.168.55.110 "sudo bash /tmp/setup-workstation.sh"
+scp scripts/setup-workstation.sh <bootstrap-user>@192.168.55.110:/tmp/
+ssh <bootstrap-user>@192.168.55.110 "sudo bash /tmp/setup-workstation.sh"
+```
+
+### Step 2: User Account Creation (`scripts/setup-user.sh`)
+Creates and aligns the user account:
+1. **Interactive Prompt**: Prompts for `username` and `UID:GID` (defaults: `akraradets` and `3000:3000`), or accepts arguments `[username] [uid:gid]`.
+2. **Identity Alignment**: Creates or migrates user and primary group to the specified `UID:GID`.
+3. **Hardware & System Groups**: Adds user to `sudo`, `docker`, `video`, `render` (Intel UHD 770 `/dev/dri/renderD128` access), and `input` (Sunshine/Moonlight).
+4. **Passwordless Sudo**: Configures validated `/etc/sudoers.d/<username>`.
+
+```bash
+# Run interactively (prompts for username and uid:gid)
+scp scripts/setup-user.sh <bootstrap-user>@192.168.55.110:/tmp/
+ssh -t <bootstrap-user>@192.168.55.110 "sudo bash /tmp/setup-user.sh"
+
+# Or pass arguments directly
+ssh <bootstrap-user>@192.168.55.110 "sudo bash /tmp/setup-user.sh akraradets 3000:3000"
+```
+
+### Step 3: TrueNAS Vault Linking (Manual Snippet)
+Once the user account exists and `/mnt/pool-1/home` is mounted, run the following commands to initialize the vault and create symlinks:
+
+```bash
+# 1. Initialize vault directories on TrueNAS (run with sudo)
+sudo mkdir -p /mnt/pool-1/home/akraradets/.ssh
+sudo mkdir -p /mnt/pool-1/home/akraradets/projects
+sudo chown -R 3000:3000 /mnt/pool-1/home/akraradets
+sudo chmod 700 /mnt/pool-1/home/akraradets/.ssh
+
+# 2. (Optional) Copy over existing authorized_keys if present
+sudo cp ~/.ssh/authorized_keys /mnt/pool-1/home/akraradets/.ssh/ 2>/dev/null || true
+sudo chown 3000:3000 /mnt/pool-1/home/akraradets/.ssh/authorized_keys 2>/dev/null || true
+sudo chmod 600 /mnt/pool-1/home/akraradets/.ssh/authorized_keys 2>/dev/null || true
+
+# 3. Create persistent symlinks in local home (run as user akraradets)
+ln -sfn /mnt/pool-1/home/akraradets/.ssh ~/.ssh
+ln -sfn /mnt/pool-1/home/akraradets/projects ~/projects
 ```
 
 ---

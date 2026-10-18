@@ -105,9 +105,10 @@ All documentation files reside in [`docs/`](./docs/):
   - For full GUI desktops, use official desktop ISOs or pass through Intel UHD 770 iGPU (`/dev/dri`) for hardware-accelerated **Sunshine + Moonlight**.
 - **Linux Kernel Blocks `usermod -u 3000` While Logged In**:
   - A user cannot change their own UID while their shell or session is active (`usermod: user is currently used by process <PID>`). User accounts with custom UIDs (3000) must be created prior to user login or via bootstrap user.
-- **GPU Passthrough Dual-Display Strategy During OS Installation**:
-  - When installing an OS from ISO on a VM with PCIe GPU passthrough, do **NOT** set `xvga = true` or remove the virtual display.
-  - Maintain `vga { type = "virtio", memory = 32 }` alongside `hostpci { xvga = false, rombar = false }` so the Proxmox web noVNC console remains fully interactive for the GUI installer while the guest kernel initializes the physical GPU (`/dev/dri/renderD128`) in parallel.
+- **Intel UHD 770 iGPU Passthrough to KVM is an Anti-Pattern (Use Dedicated NVIDIA RTX 3060)**:
+  - Intel 12th/13th/14th Gen iGPUs (UHD 770) sit in **IOMMU Group 0** alongside the CPU Host Bridge (`0000:00:00.0`), suffer from driver contention with Proxmox host's `i915` driver, and lack PCIe FLR (Function Level Reset). This causes VM and hypervisor kernel freezes when probed.
+  - VM 110 (`work-desktop`) runs as a clean, stable development workstation with VirtIO display and VS Code Remote - SSH.
+  - GPU passthrough and Sunshine NVENC streaming are standardized exclusively on the dedicated **NVIDIA GeForce RTX 3060 12GB** (**IOMMU Group 15**) on VM 120 (`work-compute`).
 - **Provider `cdrom` Deprecation in `bpg/proxmox`**:
   - `cdrom.enabled` is deprecated and defaults to `false` if omitted. When attaching an ISO CD-ROM, explicitly ensure the media is loaded and boot order prioritizes the CD-ROM interface (`["ide3", "scsi0"]`).
 
