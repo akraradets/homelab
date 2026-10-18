@@ -129,9 +129,49 @@ TrueNAS exports storage over NFS to Proxmox and client workloads.
   * Username: **`akraradets`**
   * UID: **`3000`**
   * Primary Group: **`akraradets`** (GID `3000`)
+  * Home Directory: `/mnt/pool-1/home/akraradets`
+  * Authentication: **Samba Authentication (`SMB User`)** enabled
 * **SMB Shares**:
   * **`home`**: Path `/mnt/pool-1/home` with **`Use as Home Share` enabled** (automatically maps users to `/mnt/pool-1/home/%U`, giving immediate Finder access to `projects/` and personal files).
   * **`TimeMachine`**: Path `/mnt/pool-1/archive/timemachine` with **Time Machine** multi-user option enabled for automatic macOS Bonjour discovery.
+
+### A. Configuring the `/mnt/pool-1/home` SMB Share in TrueNAS
+1. **Verify User (`Credentials` $\rightarrow$ `Local Users` $\rightarrow$ `akraradets`)**:
+   * Confirm **UID** is `3000`, **Primary Group** is `akraradets` (`GID 3000`), and **Home Directory** is `/mnt/pool-1/home/akraradets`.
+   * Ensure **SMB User** (Samba Authentication) is checked and a password is saved.
+2. **Create Share (`Shares` $\rightarrow$ `Windows (SMB) Shares` $\rightarrow$ `Add`)**:
+   * **Path**: `/mnt/pool-1/home`
+   * **Name**: `home`
+   * **Purpose**: `No presets` (or `Default share parameters`) $\rightarrow$ **Advanced Options** $\rightarrow$ check **Use as Home Share**.
+3. **Enable Service (`System Settings` $\rightarrow$ `Services`)**:
+   * Ensure the **SMB** service is running and **Start Automatically** is enabled.
+
+### B. Mounting the SMB Share on macOS (MacBook)
+1. Open **Finder** and press **`Cmd + K`** (*Go $\rightarrow$ Connect to Server...*).
+2. Enter the TrueNAS SMB URL:
+   ```text
+   smb://truenas.home.sinsamersuk.net/home
+   ```
+   *(Or use the static IP: `smb://192.168.55.100/home` — works seamlessly on LAN and remotely over NetBird).*
+3. Authenticate as **Registered User**:
+   * **Name**: `akraradets`
+   * **Password**: *(TrueNAS SMB password)*
+   * Check **Remember this password in my keychain**.
+   * macOS mounts the share at `/Volumes/home`.
+4. **Optional — 1:1 Path Parity on macOS (`/mnt/pool-1/home`)**:
+   Because macOS uses a read-only system volume at `/`, use `/etc/synthetic.conf` if you want `/mnt/pool-1/home` on your MacBook to match the exact Linux path:
+   ```bash
+   # 1. Register synthetic /mnt directory on macOS (requires reboot once to take effect)
+   echo -e "mnt\tSystem/Volumes/Data/mnt" | sudo tee -a /etc/synthetic.conf
+   sudo mkdir -p /System/Volumes/Data/mnt/pool-1
+   sudo chown -R "$(id -u):$(id -g)" /System/Volumes/Data/mnt
+
+   # 2. Reboot macOS once so /mnt is created, then symlink to the mounted SMB volume:
+   ln -sfn /Volumes/home /mnt/pool-1/home
+   ```
+5. **Auto-Mount on macOS Login (Optional)**:
+   * Navigate to **System Settings** $\rightarrow$ **General** $\rightarrow$ **Login Items & Extensions**.
+   * Under **Open at Login**, click **`+`** and select the mounted `home` volume from Finder.
 
 ---
 

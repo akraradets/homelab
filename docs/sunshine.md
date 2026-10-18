@@ -194,6 +194,22 @@ In Moonlight's settings (gear icon on macOS):
 | **Video Codec** | `HEVC` or `AV1` | Fast hardware decode on Apple Silicon with lowest bandwidth |
 | **Host Processing Latency** | **1.0 – 2.5 ms** | Sub-millisecond frame delivery via NVIDIA NVENC |
 
+### Clipboard Sharing & Keyboard Shortcuts (macOS $\leftrightarrow$ Linux)
+
+Because the underlying GameStream protocol lacks a dedicated bidirectional clipboard channel, standard `Cmd+C` / `Ctrl+V` does not automatically sync across the stream. Use one of the following methods:
+
+1. **Built-in Moonlight "Paste Clipboard Text" Shortcut (Mac $\rightarrow$ Linux Host)**:
+   * Copy text on your MacBook (`Cmd + C`), focus the target window inside the Moonlight stream, and press:
+     ```text
+     Control + Option + Shift + V
+     ```
+   * Moonlight reads your macOS clipboard and types the string character-by-character into the remote Linux session via `/dev/uinput`.
+2. **Bidirectional Background Clipboard Sync (KDE Connect)**:
+   * Install `kdeconnect` on the Ubuntu workstation (`sudo apt install -y kdeconnect`) and the [KDE Connect macOS client](https://kdeconnect.kde.org/download.html) on your MacBook.
+   * Pair both devices over the `192.168.55.0/24` LAN or NetBird mesh for automatic two-way clipboard synchronization.
+3. **Shared TrueNAS Home Directory (`pool-1/home`)**:
+   * With `/mnt/pool-1/home/akraradets` mounted via NFS on the Linux workstation and via SMB on macOS (see [[truenas|TrueNAS SMB Sharing]]), files and snippets saved to your home directory are immediately accessible on both machines.
+
 ---
 
 ## 7. Network Port Reference
