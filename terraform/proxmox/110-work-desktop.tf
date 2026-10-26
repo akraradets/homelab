@@ -33,12 +33,13 @@ resource "proxmox_virtual_environment_vm" "work_desktop" {
   }
 
   cpu {
-    cores = 6
+    cores = 8
+    sockets = 1
     type  = "host"
   }
 
   memory {
-    dedicated = 16384
+    dedicated = 32768
   }
 
   network_device {
@@ -59,7 +60,7 @@ resource "proxmox_virtual_environment_vm" "work_desktop" {
     datastore_id = "truenas-fast"
     interface    = "scsi0"
     file_format  = "raw"
-    size         = 64
+    size         = 250
     iothread     = true
     discard      = "on"
     ssd          = true
