@@ -13,9 +13,8 @@ This repository serves as the single source of truth for my homelab architecture
 - **Storage Appliance**: **TrueNAS SCALE** virtualized inside Proxmox (VM ID `100`):
   - Dedicated PCIe passthrough of the physical SATA / SAS HBA storage controller directly to the TrueNAS VM for native ZFS health & SMART control.
   - Virtual 32 GB boot drive on NVMe SSD (`local-lvm`).
-- **Compute Workloads**:
-  - Workstation Desktop VM (SPICE display driver + `qemu-vdagent` for smooth cursor, clipboard, and resolution scaling).
-  - Headless Development VMs for containers and background workloads.
+- **Compute Workload**:
+  - **Workstation Desktop VM (`work-desktop`, VM ID `110`)**: Ubuntu 26.04 Desktop with dedicated PCIe passthrough of an **NVIDIA GeForce RTX 3060 12GB** (`0000:01:00.0`, IOMMU Group 15), supporting both **VS Code / Cursor Remote - SSH** (development, Docker, CUDA) and **Sunshine + Moonlight** (60–120 FPS NVENC desktop streaming).
 - **High-Speed Interconnect**:
   - Communication between compute VMs and TrueNAS storage runs over the internal Linux bridge (`vmbr0`) at **near-memory speeds (~15–25+ Gbps)** in host RAM, eliminating the need for 10GbE network cards.
 - **External Networking & DNS**:

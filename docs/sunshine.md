@@ -16,10 +16,10 @@ During homelab compute prototyping on Proxmox VE, two GPU passthrough approaches
   3. **Broken FLR (Function-Level Reset)**: Consumer Intel 12th/13th/14th Gen iGPUs lack PCIe FLR, causing hard VM and hypervisor crashes during display initialization or reboot.
 
 ### B. NVIDIA GeForce RTX 3060 12GB Passthrough (Standardized Architecture)
-* **Target Host**: Workstation Desktop (`work-desktop`, VM 110 : `192.168.55.110`).
+* **Target Host**: Consolidated Workstation Desktop (`work-desktop`, VM 110 : `192.168.55.110` / `desktop.home.sinsamersuk.net`).
 * **Hardware Address**: PCIe `0000:01:00.0` (Audio controller: `0000:01:00.1`).
 * **IOMMU Group**: **Group 15** (Dedicated, 100% isolated PCIe slot).
-* **Encoder**: **NVIDIA NVENC (Ampere 7th Gen)** supporting real-time H.264, HEVC (H.265), and AV1 encode at 60–120+ FPS with sub-millisecond host processing latency.
+* **Encoder**: **NVIDIA NVENC (Ampere 7th Gen)** supporting real-time H.264 and HEVC (H.265 8-bit/10-bit) hardware encoding at 60–120+ FPS with sub-millisecond host processing latency.
 
 ```mermaid
 flowchart LR
@@ -38,8 +38,8 @@ flowchart LR
         end
 
         subgraph SunshineService ["Sunshine Streaming Host"]
-            Sunshine["Sunshine Server (Port 47990 / UDP 47998-48000)\nUser Service: akraradets"]
-            KMS["KMS / NvFBC Display Capture"]
+            Sunshine["Sunshine Server (Port 47990 / UDP 47998-48000)\nSystem Service (KMS Capture)"]
+            KMS["DRM / KMS Display Capture\n(card0-HDMI-A-1)"]
             Encoder["NVENC Hardware Video Encoder\n(HEVC / H.264)"]
         end
     end
@@ -63,8 +63,8 @@ On the workstation desktop guest node (`work-desktop`):
 ```bash
 sudo apt-get update
 sudo apt-get install -y --no-install-recommends \
-    nvidia-driver-550 \
-    nvidia-utils-550
+    nvidia-driver-595-open \
+    nvidia-utils-595
 ```
 
 ### Step 2: Verify GPU Passthrough & NVENC Health
@@ -73,18 +73,16 @@ Reboot the VM, then run:
 nvidia-smi
 ```
 Expected output:
-* Driver Version: `550.x+`
+* Driver Version: `595.x+` (CUDA `13.2+`)
 * GPU: `NVIDIA GeForce RTX 3060` (12 GB VRAM)
-* Persistence Mode: Enabled
 
 ---
 
 ## 3. User Groups & Virtual Input Permissions
 
-Sunshine executes as the unprivileged user (`akraradets`) and injects virtual inputs via `/dev/uinput`.
+Verify that `akraradets` belongs to the necessary hardware groups and `/dev/uinput` is accessible:
 
 ### A. Group Memberships
-Verify that `akraradets` belongs to the necessary hardware groups:
 ```bash
 sudo usermod -aG video,render,input akraradets
 ```
@@ -104,7 +102,9 @@ ls -la /dev/uinput
 
 ---
 
-## 4. Sunshine Installation & Service Configuration
+## 4. Sunshine Installation & System Service Configuration
+
+Running Sunshine as a **systemd system service** with `capture = kms` allows Moonlight to stream both the **GDM login screen** immediately after a reboot and the **GNOME Wayland desktop** after logging in.
 
 ### Step 1: Install Official Debian Package
 ```bash
@@ -118,43 +118,98 @@ curl -fsSL -o /tmp/sunshine.deb "${SUNSHINE_URL}"
 sudo apt-get install -y /tmp/sunshine.deb
 rm -f /tmp/sunshine.deb
 
-# Grant capabilities for KMS/display capture without root
+# Grant capabilities for KMS/display capture
 sudo setcap cap_sys_admin+p "$(which sunshine)"
 ```
 
-### Step 2: Configure Headless Operation & CSRF Whitelist
-When running Sunshine as a headless background service without an interactive desktop display tray:
-
+### Step 2: Configure `/etc/sunshine/sunshine.conf`
 ```bash
-mkdir -p ~/.config/sunshine
-cat << 'EOF' > ~/.config/sunshine/sunshine.conf
+sudo mkdir -p /etc/sunshine
+cat << 'EOF' | sudo tee /etc/sunshine/sunshine.conf
 csrf_allowed_origins = https://192.168.55.110:47990,https://desktop.home.sinsamersuk.net:47990
 system_tray = disabled
+capture = kms
+encoder = nvenc
 EOF
 ```
 
 > [!IMPORTANT]
-> Setting `system_tray = disabled` prevents Sunshine from exiting when Qt cannot initialize a desktop GUI tray icon in headless environments.
+> - `system_tray = disabled` prevents Sunshine from exiting when Qt cannot initialize a desktop GUI tray icon in background service mode.
+> - `capture = kms` and `encoder = nvenc` bind Sunshine directly to `/dev/dri/card0` (`nvidia-drm`) and the RTX 3060 NVENC hardware encoder.
 
-### Step 3: Enable Systemd User Service
-LizardByte packages register the unit as `app-dev.lizardbyte.app.Sunshine.service`:
+### Step 3: Configure Systemd Service with GDM / DRM Readiness Guard
+If Sunshine starts on boot before `gdm.service` initializes a DRM framebuffer on `/dev/dri/card0`, Sunshine's initial KMS probe fails, causing it to permanently drop `CAP_SYS_ADMIN` (`drop_elevated_privileges`) and fail all subsequent stream requests with `"Failed to initialize video capture/encoding. Is a display connected and turned on?"`.
+
+To prevent this boot race condition, order `sunshine.service` after `gdm.service` and wait for an enabled DRM connector in `ExecStartPre`:
 
 ```bash
-# 1. Enable lingering so the service survives SSH logout and starts on boot
-sudo loginctl enable-linger akraradets
+cat << 'EOF' | sudo tee /etc/systemd/system/sunshine.service
+[Unit]
+Description=Sunshine self-hosted game stream host for Moonlight (System Service)
+After=network-online.target gdm.service systemd-logind.service
+Wants=network-online.target gdm.service
 
-# 2. (Optional) Create a convenient 'sunshine' alias symlink
-mkdir -p ~/.config/systemd/user
-ln -sfn /usr/lib/systemd/user/app-dev.lizardbyte.app.Sunshine.service ~/.config/systemd/user/sunshine.service
+[Service]
+Type=simple
+ExecStartPre=/bin/sh -c 'for i in $(seq 1 30); do grep -q "^enabled$" /sys/class/drm/card*-*/enabled 2>/dev/null && exit 0; sleep 1; done; exit 0'
+ExecStart=/usr/bin/sunshine /etc/sunshine/sunshine.conf
+Restart=always
+RestartSec=5s
 
-# 3. Reload daemon and start
-systemctl --user daemon-reload
-systemctl --user start sunshine
+[Install]
+WantedBy=graphical.target
+EOF
+
+sudo systemctl disable sunshine.service 2>/dev/null || true
+sudo systemctl daemon-reload
+sudo systemctl enable --now sunshine.service
 ```
 
-Verify service status:
+### Step 4: Disable GDM Greeter & GNOME Idle Display Blanking (DPMS Off)
+By default, `gdm-greeter` turns off the display (`dpms = Off`, `enabled = disabled`) after 5 minutes at the login screen, and GNOME blanks the desktop after 15 minutes of inactivity. When the display enters DPMS `Off`, the DRM plane has no framebuffer (`fb = 0`), causing KMS capture to fail (`Couldn't find monitor [0]`).
+
+Disable idle display blanking and auto-suspend for both **GDM Greeter** and the **user desktop session**:
+
 ```bash
-systemctl --user status sunshine
+# 1. Disable idle blanking & auto-suspend on the GDM login screen
+cat << 'EOF' | sudo tee /etc/gdm3/greeter.dconf-defaults
+[org/gnome/login-screen]
+
+[org/gnome/desktop/session]
+idle-delay=uint32 0
+
+[org/gnome/desktop/screensaver]
+idle-activation-enabled=false
+lock-enabled=false
+
+[org/gnome/settings-daemon/plugins/power]
+sleep-inactive-ac-timeout=0
+sleep-inactive-ac-type='nothing'
+sleep-inactive-battery-timeout=0
+sleep-inactive-battery-type='nothing'
+idle-dim=false
+
+[org/gnome/desktop/interface]
+EOF
+
+# Compile GDM dconf database (/var/lib/gdm3/greeter-dconf-defaults)
+sudo /usr/share/gdm/generate-config
+
+# 2. Disable idle blanking in the user desktop session (run as akraradets)
+gsettings set org.gnome.desktop.session idle-delay 0
+gsettings set org.gnome.desktop.screensaver idle-activation-enabled false
+gsettings set org.gnome.desktop.screensaver lock-enabled false
+gsettings set org.gnome.settings-daemon.plugins.power idle-dim false
+gsettings set org.gnome.settings-daemon.plugins.power sleep-inactive-ac-type 'nothing'
+gsettings set org.gnome.settings-daemon.plugins.power sleep-inactive-ac-timeout 0
+```
+
+Verify DRM display state and Sunshine service status:
+```bash
+cat /sys/class/drm/card0-HDMI-A-1/dpms /sys/class/drm/card0-HDMI-A-1/enabled
+# Expected: On / enabled
+
+sudo systemctl status sunshine.service
 ```
 
 ---
@@ -191,7 +246,7 @@ In Moonlight's settings (gear icon on macOS):
 | **Resolution** | `2560x1440` or `3840x2160` (4K) | High-fidelity rendering backed by 12GB VRAM |
 | **Frame Rate** | `60 FPS` or `120 FPS` | Native ProMotion smoothness |
 | **Video Bitrate** | `40–80 Mbps` | Flawless clarity over local virtual bridge |
-| **Video Codec** | `HEVC` or `AV1` | Fast hardware decode on Apple Silicon with lowest bandwidth |
+| **Video Codec** | `HEVC (H.265)` or `H.264` | Hardware NVENC encode on RTX 3060 + fast hardware decode on Apple Silicon |
 | **Host Processing Latency** | **1.0 – 2.5 ms** | Sub-millisecond frame delivery via NVIDIA NVENC |
 
 ### Clipboard Sharing & Keyboard Shortcuts (macOS $\leftrightarrow$ Linux)

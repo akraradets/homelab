@@ -23,26 +23,26 @@ flowchart TD
         end
 
         subgraph VMs ["Virtual Machines"]
-            TrueNAS["TrueNAS SCALE VM (ID: 100)\nIP: 192.168.55.100\n• 4 vCPUs / 16GB Dedicated RAM\n• 32GB Virtual NVMe Boot Disk\n• Manages ZFS Pools & Datasets\n• Serves SMB & Apple Time Machine"]
-            WorkDesktop["Workstation Desktop VM\n• SPICE Display + qemu-vdagent\n• Fluid Cursor & Clipboard Sync\n• Mounts TrueNAS over vmbr0"]
-            WorkHeadless["Headless Dev VM\n• Docker & Background Jobs\n• Mounts TrueNAS over vmbr0"]
+            TrueNAS["TrueNAS SCALE VM (ID: 100)\nIP: 192.168.55.100\n• 4 vCPUs / 32GB Dedicated RAM\n• 32GB Virtual NVMe Boot Disk\n• Manages ZFS Pools & Datasets\n• Serves NFS, SMB & Apple Time Machine"]
+            WorkDesktop["Workstation Desktop VM (ID: 110)\nIP: 192.168.55.110\n• 8 vCPUs / 32GB RAM / 250GB NVMe\n• NVIDIA RTX 3060 12GB Passthrough\n• VS Code Remote-SSH + Sunshine/Moonlight\n• Mounts TrueNAS over vmbr0"]
         end
 
-        subgraph HardwareDrives ["Physical Storage Hardware"]
-            SATA["Motherboard SATA / SAS HBA Controller\n(Direct PCIe Passthrough via IOMMU)"]
-            Disks["Physical Hard Drives\n(Raw ZFS Health & SMART Monitoring)"]
+        subgraph HardwarePassthrough ["PCIe Hardware Passthrough (IOMMU)"]
+            SATA["Motherboard SATA Controller + 2TB NVMe\n(PCIe Passthrough to TrueNAS)"]
+            Disks["Physical HDDs & NVMe\n(Raw ZFS Health & SMART Monitoring)"]
+            GPU["NVIDIA GeForce RTX 3060 12GB\n(PCIe Passthrough to work-desktop)"]
         end
     end
 
-    %% Storage connections
+    %% Hardware Passthrough connections
     SATA ==>|PCIe Passthrough| TrueNAS
     Disks --- SATA
+    GPU ==>|PCIe Passthrough| WorkDesktop
 
     %% Network & Interconnect
     PVE --- VMBR
     VMBR <===> TrueNAS
     VMBR <===> WorkDesktop
-    VMBR <===> WorkHeadless
 
     %% Remote Access connections
     MacClient -.->|Signaling| NetBirdCloud
@@ -97,8 +97,7 @@ Remote administration uses **NetBird Cloud** ([app.netbird.io](https://app.netbi
 | :--- | :--- | :--- |
 | `pve-1.home.sinsamersuk.net` | `192.168.55.10` | Proxmox VE Web Management GUI (`:8006`) & SSH |
 | `truenas.home.sinsamersuk.net` | `192.168.55.100` | TrueNAS SCALE Web GUI (`:443`), SMB, NFS |
-| `work-desktop.home.sinsamersuk.net` | `192.168.55.110` | Desktop Workstation VM (Intel UHD 770, Moonlight/Sunshine) |
-| `work-compute.home.sinsamersuk.net` | `192.168.55.120` | Headless Compute Server (NVIDIA RTX 3060, Docker, CUDA) |
+| `desktop.home.sinsamersuk.net` | `192.168.55.110` | Consolidated Workstation VM (`work-desktop`, VM 110: Ubuntu 26.04 Desktop, NVIDIA RTX 3060 12GB, VS Code Remote-SSH & Sunshine/Moonlight) |
 
 ---
 
@@ -124,10 +123,11 @@ Rather than running multiple power-hungry physical servers connected over a slow
 - Compute VMs and TrueNAS connect over the internal Linux bridge (`vmbr0`) using `virtio-net`.
 - Network traffic between Workstation VMs and TrueNAS storage travels entirely within host RAM, achieving **sustained speeds of ~15–25+ Gbps** without requiring physical 10GbE network cards or switches.
 
-### Workstation & Compute Workloads
-- Supports both headless development environments (accessed via **VS Code / Cursor Remote - SSH**) and graphical desktop environments (streamed via **Sunshine + Moonlight** with Intel Quick Sync hardware acceleration).
+### Workstation & GPU Compute (`work-desktop`, `vm_id = 110`)
+- Consolidates daily development, Docker/CUDA compute, and full graphical desktop workflows onto a single Ubuntu 26.04 Desktop VM (`work-desktop`) with direct PCIe passthrough of the **NVIDIA GeForce RTX 3060 12GB** (`0000:01:00.0`, IOMMU Group 15).
+- Accessed via **VS Code / Cursor Remote - SSH** for low-latency coding and **Sunshine + Moonlight** (NVENC hardware encoding) for 60–120 FPS desktop streaming.
 - User identity is unified with UID `3000` (`akraradets`), allowing direct read/write access to TrueNAS NFS datasets over `vmbr0` at near-memory speeds (~15–25+ Gbps).
-- Detailed protocol evaluation and runbooks are documented in [[workstation|Workstation & Dev Environments]].
+- Detailed configuration and runbooks are documented in [[workstation|Workstation & Dev Environments]] and [[sunshine|Sunshine GUI Streaming]].
 
 ---
 

@@ -23,31 +23,49 @@ Physical storage controllers are isolated and passed through directly to storage
 
 | Resource Mapping | PCI Address | Hardware Vendor/Device ID | IOMMU Group | Guest Target | Purpose |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **`sata-controller`** | `0000:00:17.0` | `8086:7a62` | Group 14 | TrueNAS (`hostpci0`) | Direct ZFS control over all SATA HDDs |
+| **`sata-controller`** | `0000:00:17.0` | `8086:7a62` | Group 9 | TrueNAS (`hostpci0`) | Direct ZFS control over all SATA HDDs |
 | **`nvme-fast-storage`** | `0000:03:00.0` | `1987:5012` | Group 17 | TrueNAS (`hostpci1`) | Fast NVMe pool for VM disks & containers |
+| **`nvidia-rtx3060`** | `0000:01:00` | `10de:2504` | Group 15 | `work-desktop` (`hostpci0`) | Dedicated NVIDIA RTX 3060 12GB for desktop, CUDA & NVENC streaming |
 
 > [!IMPORTANT]
-> The host boot drive (`0000:02:00.0` Apacer 256GB NVMe) remains on the hypervisor to provide the Proxmox OS root partition and `local-lvm` for hypervisor virtual boot drives.
+> - The host boot drive (`0000:02:00.0` Apacer 256GB NVMe) remains on the hypervisor to provide the Proxmox OS root partition and `local-lvm` for hypervisor virtual boot drives.
+> - The integrated Intel UHD 770 iGPU (`0000:00:02.0`, IOMMU Group 0) is intentionally **not** passed through to any VM due to IOMMU Group 0 host-bridge sharing and lack of PCIe FLR. All guest GPU acceleration uses the dedicated NVIDIA RTX 3060 in IOMMU Group 15.
 
 Declarative Terraform mapping in [`terraform/proxmox/hardware.tf`](file:///Users/akraradets/Projects/sinsamersuk/homelab/terraform/proxmox/hardware.tf):
 ```hcl
 resource "proxmox_virtual_environment_hardware_mapping_pci" "sata_controller" {
-  name        = "sata-controller"
-  description = "Intel Raptor Lake SATA Controller (0000:00:17.0)"
+  name    = "sata-controller"
+  comment = "Intel Raptor Lake SATA AHCI Controller for TrueNAS"
   map = [{
-    node = "pve-1"
-    path = "0000:00:17.0"
-    id   = "8086:7a62"
+    node         = "pve-1"
+    path         = "0000:00:17.0"
+    id           = "8086:7a62"
+    subsystem_id = "1043:8882"
+    iommu_group  = 9
   }]
 }
 
 resource "proxmox_virtual_environment_hardware_mapping_pci" "nvme_fast_storage" {
-  name        = "nvme-fast-storage"
-  description = "PNY CS3030 2TB NVMe SSD (0000:03:00.0)"
+  name    = "nvme-fast-storage"
+  comment = "PNY CS3030 2TB NVMe SSD for TrueNAS VM Storage"
   map = [{
-    node = "pve-1"
-    path = "0000:03:00.0"
-    id   = "1987:5012"
+    node         = "pve-1"
+    path         = "0000:03:00.0"
+    id           = "1987:5012"
+    subsystem_id = "1987:5012"
+    iommu_group  = 17
+  }]
+}
+
+resource "proxmox_virtual_environment_hardware_mapping_pci" "nvidia_rtx3060" {
+  name    = "nvidia-rtx3060"
+  comment = "NVIDIA GeForce RTX 3060 12GB for Compute & Moonlight Streaming"
+  map = [{
+    node         = "pve-1"
+    path         = "0000:01:00"
+    id           = "10de:2504"
+    subsystem_id = "1458:4073"
+    iommu_group  = 15
   }]
 }
 ```

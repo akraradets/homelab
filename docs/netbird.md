@@ -34,8 +34,8 @@ graph TD
             TrueNAS["TrueNAS SCALE\nIP: 192.168.55.100\nSMB, NFS, Web GUI (:443)"]
         end
 
-        subgraph Compute["Client Workloads"]
-            Workstations["Desktop & Dev VMs\n(192.168.55.110 - .120)"]
+        subgraph Compute["Workstation Workload (ID: 110)"]
+            Workstations["work-desktop\nIP: 192.168.55.110\nSSH & Moonlight/Sunshine"]
         end
     end
 

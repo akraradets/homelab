@@ -20,11 +20,12 @@ This repository serves two primary functions:
   - Virtual 32 GB boot disk on NVMe (`local-lvm`).
   - TrueNAS runs ZFS directly against physical drives for native SMART health and scrub integrity.
   - Serves SMB shares and **Apple Time Machine** (with strict dataset quotas).
-- **Compute Workloads**:
-  - **Desktop Workstation (VM 110)**: Ubuntu 26.04 Desktop with **Intel UHD Graphics 770** passthrough (`0000:00:02.0`, IOMMU Group 0) streamed via **Sunshine + Moonlight** at 60–120 FPS.
-  - **Headless GPU Compute Server (VM 120)**: Ubuntu Server with **NVIDIA GeForce RTX 3060 12GB** passthrough (`0000:01:00.0`, IOMMU Group 15) for CUDA, Docker, and AI/ML workloads accessed via **VS Code / Cursor Remote - SSH**.
+- **Compute Workload**:
+  - **Consolidated Desktop & Compute Workstation (VM 110 : `work-desktop`)**: Ubuntu 26.04 Desktop (`192.168.55.110` / `desktop.home.sinsamersuk.net`) with **NVIDIA GeForce RTX 3060 12GB** passthrough (`0000:01:00.0`, IOMMU Group 15):
+    - Streamed at 60–120 FPS via **Sunshine + Moonlight** (NVENC hardware encoding + KMS capture).
+    - Accessed via **VS Code / Cursor Remote - SSH** for coding, Docker containers, and CUDA / AI/ML workloads.
   - Standardized identity: **`akraradets` (UID 3000, GID 3000)** strictly aligned with TrueNAS ZFS dataset permissions.
-  - Both nodes mount TrueNAS storage over the virtual bridge (`vmbr0`) at **near-memory speeds (~15–25+ Gbps)**:
+  - Mounts TrueNAS storage over the virtual bridge (`vmbr0`) at **near-memory speeds (~15–25+ Gbps)**:
     - `/mnt/pool-1/home` (User personal home vaults, `.ssh` credentials, and `projects/`)
 - **Remote Access (Zero Inbound Ports)**:
   - **NetBird Cloud** (managed free tier at `app.netbird.io`).
@@ -86,9 +87,8 @@ All documentation files reside in [`docs/`](./docs/):
 - **[`terraform/proxmox/`](./terraform/proxmox/)**:
   - Uses `bpg/proxmox` provider.
   - `100-truenas.tf`: TrueNAS SCALE VM with PCIe controller passthrough (`order = 1, up_delay = 60`).
-  - `110-work-desktop.tf`: Ubuntu 26.04 Desktop VM with Intel UHD 770 passthrough (`order = 2`).
-  - `120-work-compute.tf`: Headless Ubuntu Server VM with NVIDIA RTX 3060 passthrough (in planning).
-  - `hardware.tf`: PCI hardware mappings for SATA controller, NVMe, Intel UHD 770 (`intel-uhd`), and NVIDIA RTX 3060 (`nvidia-rtx3060`).
+  - `110-work-desktop.tf`: Ubuntu 26.04 Desktop Workstation VM with NVIDIA GeForce RTX 3060 12GB passthrough (`order = 2`).
+  - `hardware.tf`: PCI hardware mappings for SATA controller (`sata-controller`), NVMe (`nvme-fast-storage`), and NVIDIA RTX 3060 (`nvidia-rtx3060`).
   - `outputs.tf`: Proxmox cluster metadata and VM outputs.
 
 ---
@@ -101,14 +101,15 @@ All documentation files reside in [`docs/`](./docs/):
   - **Do NOT** use `proxmox_virtual_environment_file` for snippets; always configure Cloud-Init via native `initialization` block in `proxmox_virtual_environment_vm`.
 - **Headless Cloud Image $\rightarrow$ Desktop GUI is an Anti-Pattern**:
   - Cloud images lack GPU drivers; bolting on desktop environments defaults to `llvmpipe` software rasterization on the CPU (~10–15 FPS).
-  - For development, use **VS Code / Cursor Remote - SSH** to a headless VM.
-  - For full GUI desktops, use official desktop ISOs or pass through Intel UHD 770 iGPU (`/dev/dri`) for hardware-accelerated **Sunshine + Moonlight**.
+  - Use **VS Code / Cursor Remote - SSH** for coding and official desktop ISOs with dedicated **NVIDIA RTX 3060 12GB** passthrough for hardware-accelerated **Sunshine + Moonlight** GUI streaming.
 - **Linux Kernel Blocks `usermod -u 3000` While Logged In**:
   - A user cannot change their own UID while their shell or session is active (`usermod: user is currently used by process <PID>`). User accounts with custom UIDs (3000) must be created prior to user login or via bootstrap user.
 - **Intel UHD 770 iGPU Passthrough to KVM is an Anti-Pattern (Use Dedicated NVIDIA RTX 3060)**:
   - Intel 12th/13th/14th Gen iGPUs (UHD 770) sit in **IOMMU Group 0** alongside the CPU Host Bridge (`0000:00:00.0`), suffer from driver contention with Proxmox host's `i915` driver, and lack PCIe FLR (Function Level Reset). This causes VM and hypervisor kernel freezes when probed.
-  - VM 110 (`work-desktop`) runs as a clean, stable development workstation with VirtIO display and VS Code Remote - SSH.
-  - GPU passthrough and Sunshine NVENC streaming are standardized exclusively on the dedicated **NVIDIA GeForce RTX 3060 12GB** (**IOMMU Group 15**) on VM 120 (`work-compute`).
+  - Intel iGPU passthrough is retired; GPU passthrough, CUDA compute, and Sunshine NVENC streaming are consolidated exclusively on the dedicated **NVIDIA GeForce RTX 3060 12GB** (**IOMMU Group 15**) on VM 110 (`work-desktop`).
+- **Sunshine KMS Capture Boot Ordering & DPMS Guardrail**:
+  - If `sunshine.service` starts on boot before `gdm.service` initializes a DRM framebuffer on `/dev/dri/card0`, or if GDM/GNOME blanks the display (`dpms = Off`), KMS capture initialization fails and Sunshine permanently drops `CAP_SYS_ADMIN` for the process lifetime.
+  - Always order `sunshine.service` `After=gdm.service` with an `ExecStartPre` check waiting for `/sys/class/drm/card*-*/enabled`, and disable idle screen blanking (`idle-delay=0`) in both `/etc/gdm3/greeter.dconf-defaults` and user `gsettings`.
 - **Provider `cdrom` Deprecation in `bpg/proxmox`**:
   - `cdrom.enabled` is deprecated and defaults to `false` if omitted. When attaching an ISO CD-ROM, explicitly ensure the media is loaded and boot order prioritizes the CD-ROM interface (`["ide3", "scsi0"]`).
 

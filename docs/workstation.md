@@ -1,34 +1,31 @@
 # Workstation & Development Environment Architecture
 
-This runbook documents the compute workstation architecture, user identity alignment, storage integration with TrueNAS SCALE, and the evaluation of remote access protocols for the homelab.
-
-> [!NOTE]
-> **Current Lifecycle Status**:
-> The `work-desktop` VM (`vm_id = 110`) was wiped from Proxmox and commented out in [`terraform/proxmox/110-work-desktop.tf`](file:///Users/akraradets/Projects/sinsamersuk/homelab/terraform/proxmox/110-work-desktop.tf). Its storage bindings, identity framework (UID 3000), and provisioning scripts are documented below in preparation for the next-generation compute environment.
+This runbook documents the consolidated workstation architecture (`work-desktop`, `vm_id = 110`), user identity alignment, storage integration with TrueNAS SCALE, and dual-mode remote access (VS Code Remote - SSH + Sunshine/Moonlight GPU streaming).
 
 ---
 
 ## 1. Core Architecture & Specifications
 
-The homelab compute layer runs virtualized on Proxmox VE (`pve-1`), communicating directly with TrueNAS SCALE (`vm_id = 100`) across the virtual bridge (`vmbr0`) at **near-memory speeds (~15–25+ Gbps)**.
+All development, container, CUDA/AI, and desktop GUI workloads are consolidated onto a single virtualized workstation (`work-desktop`, `vm_id = 110`) on Proxmox VE (`pve-1`), communicating directly with TrueNAS SCALE (`vm_id = 100`) across the virtual bridge (`vmbr0`) at **near-memory speeds (~15–25+ Gbps)**.
 
 | Parameter | Specification | Architectural Rationale |
 | :--- | :--- | :--- |
 | **VM ID** | `110` (`work-desktop`) | Standardized VM sequencing (`order = 2`, boots after TrueNAS) |
-| **Host Hypervisor** | Proxmox VE 9.2 (`pve-1`) | Intel Core i5-13500 (Raptor Lake, 20 vCPUs, UHD 770 iGPU) |
-| **Target OS** | Ubuntu 24.04 LTS (Noble) | Long-term support, broad container & tooling support |
+| **Host Hypervisor** | Proxmox VE (`pve-1`) | Intel Core i5-13500 (Raptor Lake, 20 vCPUs) |
+| **Guest vCPUs & RAM** | `8 Cores` (`host`) / `32 GB RAM` | Dedicated compute for containers, compilation, and desktop apps |
+| **GPU Passthrough** | **NVIDIA GeForce RTX 3060 12GB** | PCIe `0000:01:00.0` (IOMMU Group 15), CUDA 13.2 & NVENC 7th Gen |
+| **Target OS** | Ubuntu 26.04 LTS Desktop | Native Wayland desktop, official NVIDIA Open Kernel drivers (`595.x`) |
 | **Primary User** | `akraradets` | Standard homelab administrator identity |
 | **UID / GID** | **`3000` / `3000`** | **Strictly matches TrueNAS ZFS dataset ownership** |
 | **Network IP** | `192.168.55.110/24` | Static internal assignment on `vmbr0` |
-| **Internal FQDN** | `desktop.home.sinsamersuk.net` | Resolves via internal Cloud DNS |
-| **Storage Datastore**| `truenas-fast` (NFS) | High-speed NVMe backed VM disks (`sync=disabled`) |
+| **Internal FQDN** | `desktop.home.sinsamersuk.net` | Resolves via internal Cloud DNS (`ssh home-workdesktop`) |
+| **Storage Datastore**| `truenas-fast` (250 GB NVMe) | High-speed NVMe backed VM disk (`sync=disabled`) |
 
 ```mermaid
 flowchart TD
     subgraph Client ["Client Devices (MacBook / iPad / PC)"]
         VSCode["VS Code / Cursor (Remote - SSH)"]
         Moonlight["Moonlight Client (60-120 FPS)"]
-        RDP["Microsoft Remote Desktop (RDP)"]
     end
 
     subgraph RemoteMesh ["Remote Access (Zero Open Ports)"]
@@ -38,15 +35,17 @@ flowchart TD
     subgraph PVE ["Proxmox Hypervisor (pve-1)"]
         VMBR["Linux Bridge vmbr0\n(Host RAM Interconnect)"]
         
-        subgraph ComputeVM ["Compute / Workstation VM (ID: 110)"]
-            DevTools["Docker • Go • Node.js • Python"]
+        subgraph ComputeVM ["Workstation VM (ID: 110 : work-desktop)"]
+            RTX["NVIDIA RTX 3060 12GB\n(PCIe Passthrough • IOMMU Group 15)"]
+            Sunshine["Sunshine Server (KMS + NVENC)"]
+            DevTools["Docker • CUDA • Go • Node.js • Python"]
             SSHD["OpenSSH Server (Port 22)"]
-            MountPoint["/home/akraradets/projects"]
+            MountPoint["/mnt/pool-1/home/akraradets"]
         end
 
         subgraph StorageVM ["TrueNAS SCALE (VM 100)"]
             ZFSFast["pool-fast/vms\n(VM Root Disks)"]
-            ZFSProjects["pool-1/projects/akraradets\n(UID 3000 / GID 3000)"]
+            ZFSProjects["pool-1/home/akraradets\n(UID 3000 / GID 3000)"]
         end
     end
 
@@ -58,31 +57,27 @@ flowchart TD
 
 ---
 
-## 2. Remote Access Protocols: Architectural Evaluation
+## 2. Remote Access Protocols: Dual-Mode Workflow
 
-During prototype testing on Ubuntu 24.04, three remote access approaches were evaluated:
+Rather than splitting workloads across separate desktop and headless compute VMs, `work-desktop` (`vm_id = 110`) supports two complementary remote access workflows simultaneously:
 
-### Approach A: Headless Linux Dev VM + VS Code Remote - SSH (Recommended)
-* **How It Works**: The VM runs headless with OpenSSH, Docker, and dev toolchains. VS Code or Cursor connects from macOS via the **Remote - SSH** extension over NetBird (`ssh akraradets@desktop.home.sinsamersuk.net`).
-* **Why It Is Superior**:
+### Workflow A: VS Code / Cursor Remote - SSH (Daily Development & AI/CUDA)
+* **How It Works**: VS Code or Cursor connects from macOS via **Remote - SSH** (`ssh home-workdesktop` / `desktop.home.sinsamersuk.net`).
+* **Why It Excels for Coding**:
   - **Zero Display Latency**: Editor UI, typing, scrolling, and window management render natively on macOS at full Retina resolution and 120Hz ProMotion.
-  - **Zero Codec/Bandwidth Overhead**: Only code diffs and terminal text are sent over the network; zero video streaming or compression artifacts.
-  - **Native Battery Life**: No video decoders active on the client laptop.
-  - **Compute Offload**: Heavy compilation, Docker containers, and test suites execute on the 14-core Intel i5-13500 hypervisor.
+  - **Zero Codec/Bandwidth Overhead**: Only code diffs and terminal text traverse the network.
+  - **Direct GPU & Container Access**: Terminal sessions, Docker containers, and CUDA workloads have direct access to the passed-through **NVIDIA GeForce RTX 3060 12GB** (`nvidia-smi`).
 
-### Approach B: Sunshine + Moonlight with Dedicated GPU (Standardized for VM 120)
-* **How It Works**: High-performance game and desktop streaming using [Sunshine](https://github.com/LizardByte/Sunshine) paired with [Moonlight](https://moonlight-stream.org/) client.
-* **Standardized Hardware**: Dedicated **NVIDIA GeForce RTX 3060 12GB** (`0000:01:00.0`, IOMMU Group 15) passed to **`work-compute` (VM 120)** using NVENC hardware acceleration.
-* **Architectural Learning (Intel UHD 770 Passthrough Retired)**:
-  - Intel Core i5-13500 integrated graphics (`0000:00:02.0`) sits in **IOMMU Group 0** with the CPU Host Bridge memory controller, suffers from driver contention with the Proxmox host's `i915`, and lacks PCIe FLR (Function-Level Reset), causing VM and hypervisor kernel lockups.
-  - Full PCIe GPU passthrough is standardized exclusively on the dedicated NVIDIA GPU (IOMMU Group 15). See [[sunshine|Sunshine GUI Streaming Runbook]].
+### Workflow B: Sunshine + Moonlight with NVIDIA NVENC (Full GUI Desktop)
+* **How It Works**: High-performance full desktop streaming using [Sunshine](https://github.com/LizardByte/Sunshine) (running as a systemd system service with KMS capture) paired with the [Moonlight](https://moonlight-stream.org/) client.
+* **Hardware Acceleration**: Dedicated **NVIDIA GeForce RTX 3060 12GB** (`0000:01:00.0`, IOMMU Group 15) using **NVENC (`h264_nvenc` / `hevc_nvenc`)** hardware encoding with `vga = "none"` (pure NVIDIA output). See [[sunshine|Sunshine GUI Streaming Runbook]].
+* **Why Intel UHD 770 iGPU Was Retired**:
+  - Intel Core i5-13500 integrated graphics (`0000:00:02.0`) is locked in **IOMMU Group 0** alongside the CPU Host Bridge memory controller, suffers from driver contention with the Proxmox host kernel, and lacks PCIe FLR (Function-Level Reset), causing VM and hypervisor kernel lockups.
+  - The Intel iGPU is no longer used; GPU passthrough is standardized exclusively on the dedicated NVIDIA RTX 3060 12GB on `work-desktop`.
 
-### Approach C: Traditional XRDP / Microsoft Remote Desktop (Evaluated & Retired)
-* **How It Works**: `xrdp` and `xrdp-sesman` spawn virtual X11 displays (`:10`) on user login.
+### Retired Approach: Traditional XRDP / Microsoft Remote Desktop
 * **Why It Was Retired**:
-  - **CPU Rasterization**: Cloud images running without dedicated virtual GPU acceleration render GNOME via software (`llvmpipe`), causing sluggish 10–15 FPS refresh rates and high CPU usage.
-  - **NetBird Web Client Latency**: Accessing RDP via the NetBird web browser dashboard routes through cloud TURN/relay proxies and HTML5 canvas rendering, resulting in ~200ms latency.
-  - **Polkit & Session Complexity**: Multiple background authorization prompts (`colord`, `NetworkManager`) require custom polkit rules.
+  - Software CPU rasterization (`llvmpipe`) and Polkit session prompts made XRDP sluggish compared to native NVENC streaming via Sunshine + Moonlight.
 
 ---
 
@@ -132,7 +127,7 @@ ssh <bootstrap-user>@192.168.55.110 "sudo bash /tmp/setup-workstation.sh"
 Creates and aligns the user account:
 1. **Interactive Prompt**: Prompts for `username` and `UID:GID` (defaults: `akraradets` and `3000:3000`), or accepts arguments `[username] [uid:gid]`.
 2. **Identity Alignment**: Creates or migrates user and primary group to the specified `UID:GID`.
-3. **Hardware & System Groups**: Adds user to `sudo`, `docker`, `video`, `render` (Intel UHD 770 `/dev/dri/renderD128` access), and `input` (Sunshine/Moonlight).
+3. **Hardware & System Groups**: Adds user to `sudo`, `docker`, `video`, `render` (`/dev/dri/renderD128` GPU access), and `input` (Sunshine/Moonlight).
 4. **Passwordless Sudo**: Configures validated `/etc/sudoers.d/<username>`.
 
 ```bash
